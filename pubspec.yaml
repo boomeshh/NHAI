@@ -13,16 +13,24 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   flutter_secure_storage: ^9.0.0
-  tflite_flutter: ^0.10.4
+  tflite_flutter: ^0.12.0
   camera: ^0.10.5+9
   uuid: ^4.3.3
-  connectivity_plus: ^5.0.2
+  connectivity_plus: ^6.1.0
+  google_mlkit_face_detection: ^0.13.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_lints: ^4.0.0
   mockito: ^5.4.4
   build_runner: ^2.4.8
 
 flutter:
   uses-material-design: true
+  assets:
+    # MobileFaceNet TFLite model is loaded from here at runtime by
+    # lib/core/auth_engine/tflite_model_runner.dart (assets/models/mobilefacenet.tflite).
+    # Declared as a directory so the build stays green before the binary is added
+    # and the model is auto-bundled the moment it is dropped into assets/models/.
+    - assets/models/

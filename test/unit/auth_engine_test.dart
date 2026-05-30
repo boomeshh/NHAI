@@ -116,9 +116,12 @@ void main() {
   late AuthEngineImpl engine;
 
   setUp(() {
+    // classify/threshold tests below assert the 0.75 boundary explicitly;
+    // construct the engine at that value (production default is now 0.85).
     engine = AuthEngineImpl(
       storage: _StubStorage([]),
       livenessDetector: _StubLiveness(LivenessResult.confirmed),
+      verificationThreshold: 0.75,
     );
   });
 

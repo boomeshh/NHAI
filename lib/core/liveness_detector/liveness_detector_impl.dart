@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import '../camera_frame.dart';
 import 'liveness_detector_interface.dart';
@@ -159,28 +160,61 @@ class LivenessDetectorImpl implements LivenessDetectorInterface {
   @override
   Future<LivenessResult> detectLiveness(Stream<CameraFrame> frameStream) async {
     final List<double> earValues = [];
+    final deadline = DateTime.now().add(challengeTimeout);
 
-    await for (final frame in frameStream.timeout(
-      challengeTimeout,
-      onTimeout: (sink) => sink.close(),
-    )) {
-      final double? ear = _extractEarFromFrame(frame);
-      if (ear == null) continue;
+    // Race the frame stream against a wall-clock deadline.
+    final completer = Completer<LivenessResult>();
 
-      earValues.add(ear);
-
-      // Check incrementally so we can return early on confirmed blink.
-      final result = processEarSequence(
-        earValues,
-        timeout: challengeTimeout,
-      );
-      if (result == LivenessResult.confirmed) {
-        return LivenessResult.confirmed;
+    // Timer fires at the deadline and resolves with failed if not yet done.
+    final timer = Future.delayed(challengeTimeout, () {
+      if (!completer.isCompleted) {
+        completer.complete(LivenessResult.failed);
       }
-    }
+    });
 
-    // Stream ended (timeout or exhausted) — do a final check.
-    return processEarSequence(earValues, timeout: challengeTimeout);
+    // Process frames until blink confirmed, stream ends, or deadline fires.
+    frameStream.listen(
+      (frame) {
+        if (completer.isCompleted) return;
+        if (DateTime.now().isAfter(deadline)) {
+          completer.complete(LivenessResult.failed);
+          return;
+        }
+
+        final double? ear = _extractEarFromFrame(frame);
+        if (ear == null) return;
+
+        earValues.add(ear);
+
+        // Check incrementally so we can return early on confirmed blink.
+        final result = processEarSequence(
+          earValues,
+          timeout: challengeTimeout,
+        );
+        if (result == LivenessResult.confirmed) {
+          completer.complete(LivenessResult.confirmed);
+        }
+      },
+      onDone: () {
+        if (!completer.isCompleted) {
+          completer.complete(
+            processEarSequence(earValues, timeout: challengeTimeout),
+          );
+        }
+      },
+      onError: (Object e) {
+        if (!completer.isCompleted) {
+          completer.complete(LivenessResult.failed);
+        }
+      },
+      cancelOnError: true,
+    );
+
+    // Await either the completer or the timer (timer already scheduled above).
+    final result = await completer.future;
+    // Suppress the unused future warning — timer is fire-and-forget.
+    timer.ignore();
+    return result;
   }
 
   // ---------------------------------------------------------------------------

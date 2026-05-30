@@ -12,7 +12,6 @@
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nhai_auth/models/auth_result.dart';
-import 'package:nhai_auth/models/face_embedding.dart';
 import 'package:nhai_auth/core/auth_engine/auth_engine_impl.dart';
 import 'package:nhai_auth/core/storage_manager/storage_manager_interface.dart';
 import 'package:nhai_auth/core/liveness_detector/liveness_detector_interface.dart';
@@ -25,14 +24,22 @@ import 'package:nhai_auth/core/camera_frame.dart';
 // ---------------------------------------------------------------------------
 
 class _StubStorage implements StorageManagerInterface {
-  @override Future<void> saveEmployeeRecord(EmployeeRecord r) async {}
-  @override Future<EmployeeRecord?> getEmployeeRecord(String id) async => null;
-  @override Future<List<EmployeeRecord>> getAllEmployeeRecords() async => [];
-  @override Future<bool> employeeExists(String id) async => false;
-  @override Future<void> deleteEmployeeRecord(String id) async {}
-  @override Future<void> logAuthAttempt(AuthLogEntry e) async {}
-  @override Future<List<AuthLogEntry>> getAuthLogs({int limit = 100}) async => [];
-  @override Future<void> logStorageError(String m) async {}
+  @override
+  Future<void> saveEmployeeRecord(EmployeeRecord r) async {}
+  @override
+  Future<EmployeeRecord?> getEmployeeRecord(String id) async => null;
+  @override
+  Future<List<EmployeeRecord>> getAllEmployeeRecords() async => [];
+  @override
+  Future<bool> employeeExists(String id) async => false;
+  @override
+  Future<void> deleteEmployeeRecord(String id) async {}
+  @override
+  Future<void> logAuthAttempt(AuthLogEntry e) async {}
+  @override
+  Future<List<AuthLogEntry>> getAuthLogs({int limit = 100}) async => [];
+  @override
+  Future<void> logStorageError(String m) async {}
 }
 
 class _StubLiveness implements LivenessDetectorInterface {
@@ -84,8 +91,13 @@ void main() {
     late AuthEngineImpl engine;
 
     setUp(() {
+      // This property suite validates the threshold MECHANISM at 0.75 (the
+      // value it was written against). Production default is now 0.85.
       engine = AuthEngineImpl(
-          storage: _StubStorage(), livenessDetector: _StubLiveness());
+        storage: _StubStorage(),
+        livenessDetector: _StubLiveness(),
+        verificationThreshold: 0.75,
+      );
     });
 
     // -----------------------------------------------------------------------
@@ -115,15 +127,13 @@ void main() {
           expect(
             result,
             equals(AuthClassification.verified),
-            reason:
-                'Iteration $i: score $score >= 0.75 must produce VERIFIED',
+            reason: 'Iteration $i: score $score >= 0.75 must produce VERIFIED',
           );
         } else {
           expect(
             result,
             equals(AuthClassification.failed),
-            reason:
-                'Iteration $i: score $score < 0.75 must produce FAILED',
+            reason: 'Iteration $i: score $score < 0.75 must produce FAILED',
           );
         }
       }
@@ -133,8 +143,7 @@ void main() {
     // Property: scores >= 0.75 always produce VERIFIED (100 iterations)
     // -----------------------------------------------------------------------
 
-    test(
-        'property: 100 random scores >= 0.75 always produce VERIFIED', () {
+    test('property: 100 random scores >= 0.75 always produce VERIFIED', () {
       final rng = Random(7);
 
       for (int i = 0; i < 100; i++) {
@@ -145,8 +154,7 @@ void main() {
         expect(
           result,
           equals(AuthClassification.verified),
-          reason:
-              'Iteration $i: score $score (>= 0.75) must produce VERIFIED '
+          reason: 'Iteration $i: score $score (>= 0.75) must produce VERIFIED '
               'but got $result',
         );
       }
@@ -156,8 +164,7 @@ void main() {
     // Property: scores < 0.75 always produce FAILED (100 iterations)
     // -----------------------------------------------------------------------
 
-    test(
-        'property: 100 random scores < 0.75 always produce FAILED', () {
+    test('property: 100 random scores < 0.75 always produce FAILED', () {
       final rng = Random(13);
 
       for (int i = 0; i < 100; i++) {
@@ -168,8 +175,7 @@ void main() {
         expect(
           result,
           equals(AuthClassification.failed),
-          reason:
-              'Iteration $i: score $score (< 0.75) must produce FAILED '
+          reason: 'Iteration $i: score $score (< 0.75) must produce FAILED '
               'but got $result',
         );
       }
@@ -231,8 +237,7 @@ void main() {
                   'Iteration $i: cosine=$score >= 0.75 must produce VERIFIED');
         } else {
           expect(result, equals(AuthClassification.failed),
-              reason:
-                  'Iteration $i: cosine=$score < 0.75 must produce FAILED');
+              reason: 'Iteration $i: cosine=$score < 0.75 must produce FAILED');
         }
       }
     });

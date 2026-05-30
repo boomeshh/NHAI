@@ -65,7 +65,13 @@ class _TestableEngine extends AuthEngineImpl {
     this._embedding,
     StorageManagerInterface storage,
     LivenessDetectorInterface liveness,
-  ) : super(storage: storage, livenessDetector: liveness);
+  ) : super(
+          storage: storage,
+          livenessDetector: liveness,
+          // This suite encodes the 0.75 VERIFIED contract; production default
+          // is now 0.85.
+          verificationThreshold: 0.75,
+        );
 
   @override
   Future<FaceEmbedding> runInference(CameraFrame frame) async => _embedding;

@@ -1,4 +1,6 @@
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart' show debugPrint;
+import '../recognition/embedding_math.dart';
 import '../../models/face_embedding.dart';
 import '../../models/auth_result.dart';
 import '../../models/employee_record.dart';
@@ -31,10 +33,32 @@ class _UnloadedModelRunner implements ModelRunnerInterface {
 }
 
 class AuthEngineImpl implements AuthEngineInterface {
-  static const double _verificationThreshold = 0.75;
+  /// Hardened default verification threshold (Phase 8).
+  ///
+  /// Raised from the original 0.75 to 0.85. Rationale: for L2-normalised
+  /// MobileFaceNet embeddings, genuine same-identity pairs typically score
+  /// 0.85–0.97 while different-identity pairs score below ~0.6; 0.75 leaves a
+  /// wide impostor band. 0.85 sits in the documented secure range (0.82–0.88),
+  /// trading a small increase in false rejects for a large drop in false
+  /// accepts. Configurable per deployment via the constructor.
+  static const double defaultVerificationThreshold = 0.85;
+
+  final double _verificationThreshold;
+
+  /// The active verification threshold (exposed for tests / diagnostics).
+  double get verificationThreshold => _verificationThreshold;
 
   final StorageManagerInterface _storage;
   final LivenessDetectorInterface _livenessDetector;
+
+  /// Whether the blink-based liveness challenge is run after a face match.
+  ///
+  /// Defaults to `true` (production-intent, and all existing tests rely on it).
+  /// It is disabled at the application shell (see `main.dart`) only while
+  /// MediaPipe landmark extraction — which populates [CameraFrame.landmarks]
+  /// for [LivenessDetectorImpl] — is not yet wired into the camera pipeline.
+  /// When disabled, a verified face match is accepted without the blink check.
+  final bool _livenessEnabled;
 
   /// ML model runner.
   ///
@@ -52,9 +76,13 @@ class AuthEngineImpl implements AuthEngineInterface {
     required StorageManagerInterface storage,
     required LivenessDetectorInterface livenessDetector,
     ModelRunnerInterface? modelRunner,
+    bool livenessEnabled = true,
+    double verificationThreshold = defaultVerificationThreshold,
   })  : _storage = storage,
         _livenessDetector = livenessDetector,
-        _modelRunner = modelRunner ?? const _UnloadedModelRunner();
+        _modelRunner = modelRunner ?? const _UnloadedModelRunner(),
+        _livenessEnabled = livenessEnabled,
+        _verificationThreshold = verificationThreshold;
 
   // ---------------------------------------------------------------------------
   // Embedding extraction
@@ -72,12 +100,30 @@ class AuthEngineImpl implements AuthEngineInterface {
       throw const EmbeddingError(
           EmbeddingErrorCode.noFaceDetected, 'No face detected in frame');
     }
+    // DEBUG: log actual sharpness vs threshold before the quality gate.
+    // ignore: avoid_print
+    debugPrint(
+      '[AuthEngine] extractEmbedding: '
+      'sharpnessScore=${frame.sharpnessScore} threshold=10.0 '
+      'pass=${frame.sharpnessScore >= 10.0}',
+    );
     if (frame.sharpnessScore < 10.0) {
       throw const EmbeddingError(
           EmbeddingErrorCode.lowQualityFrame, 'Frame quality too low');
     }
     try {
-      return await runInference(frame);
+      final emb = await runInference(frame);
+      final v = emb.vector;
+      // Phase 3 — embedding diagnostics + validity check.
+      debugPrint('[Embedding] ${EmbeddingMath.diagnostics(v)}');
+      if (!EmbeddingMath.isUsable(v)) {
+        throw const EmbeddingError(
+          EmbeddingErrorCode.modelInferenceFailed,
+          'Degenerate embedding (near-zero / NaN / empty)',
+        );
+      }
+      // Phase 7 — store L2-normalized embeddings for stable comparison/averaging.
+      return FaceEmbedding(EmbeddingMath.l2Normalize(v));
     } on EmbeddingError {
       rethrow;
     } catch (e) {
@@ -135,7 +181,9 @@ class AuthEngineImpl implements AuthEngineInterface {
 
   @override
   Future<AuthResult> authenticate(CameraFrame frame) async {
-    // 1. Extract live embedding.
+    final gate = _faceCountGate(frame.faceCount);
+    if (gate != null) return gate;
+
     final FaceEmbedding liveEmbedding;
     try {
       liveEmbedding = await extractEmbedding(frame);
@@ -146,24 +194,102 @@ class AuthEngineImpl implements AuthEngineInterface {
         failureReason: e.message,
       );
     }
+    return _matchAndDecide(liveEmbedding, frame);
+  }
 
-    // 2. Fetch all stored records — no network calls.
+  /// Phase 7 — averages embeddings from multiple stable frames for a more
+  /// robust live template, then matches. Skips frames that fail extraction.
+  @override
+  Future<AuthResult> authenticateAveraged(List<CameraFrame> frames) async {
+    if (frames.isEmpty) {
+      return const AuthResult(
+        classification: AuthClassification.failed,
+        trustScore: 0.0,
+        failureReason: 'No face detected',
+      );
+    }
+    final gate = _faceCountGate(frames.last.faceCount);
+    if (gate != null) return gate;
+
+    final vectors = <List<double>>[];
+    for (final f in frames) {
+      try {
+        final e = await extractEmbedding(f);
+        if (EmbeddingMath.isUsable(e.vector)) vectors.add(e.vector);
+      } on EmbeddingError {
+        // Skip a bad frame; keep the good ones.
+      }
+    }
+    if (vectors.isEmpty) {
+      return const AuthResult(
+        classification: AuthClassification.failed,
+        trustScore: 0.0,
+        failureReason: 'Could not capture a clear face',
+      );
+    }
+    debugPrint('[Recognition] averaged ${vectors.length}/${frames.length} '
+        'frame embeddings');
+    final averaged = FaceEmbedding(EmbeddingMath.averageNormalized(vectors));
+    return _matchAndDecide(averaged, frames.last);
+  }
+
+  /// Returns a failed [AuthResult] if the face-count gate fails, else null.
+  AuthResult? _faceCountGate(int faceCount) {
+    if (faceCount == 0) {
+      debugPrint('[Decision] REJECTED reason="No face detected"');
+      return const AuthResult(
+        classification: AuthClassification.failed,
+        trustScore: 0.0,
+        failureReason: 'No face detected',
+      );
+    }
+    if (faceCount > 1) {
+      debugPrint('[Decision] REJECTED reason="Multiple faces detected"');
+      return const AuthResult(
+        classification: AuthClassification.failed,
+        trustScore: 0.0,
+        failureReason: 'Multiple faces detected',
+      );
+    }
+    return null;
+  }
+
+  /// Matches [liveEmbedding] against stored records (skipping corrupt ones),
+  /// classifies, runs liveness, and returns the decision.
+  Future<AuthResult> _matchAndDecide(
+      FaceEmbedding liveEmbedding, CameraFrame frame) async {
     final List<EmployeeRecord> records = await _storage.getAllEmployeeRecords();
 
-    // 3. Compute cosine similarity against each stored embedding.
     double maxScore = 0.0;
     String? matchedId;
+    int skipped = 0;
     for (final record in records) {
-      final score =
-          cosineSimilarity(liveEmbedding.vector, record.embedding.vector);
+      final stored = record.embedding.vector;
+      // Phase 4 — skip corrupt / mismatched-length / degenerate stored records.
+      if (stored.length != liveEmbedding.vector.length ||
+          !EmbeddingMath.isUsable(stored)) {
+        skipped++;
+        continue;
+      }
+      final score = cosineSimilarity(liveEmbedding.vector, stored);
       if (score > maxScore) {
         maxScore = score;
         matchedId = record.employeeId;
       }
     }
+    if (skipped > 0) {
+      debugPrint('[Recognition] skipped $skipped invalid stored record(s)');
+    }
 
-    // 4. Classify.
     final classification = classify(maxScore);
+    // Phase 9 — structured security logs.
+    debugPrint('[Recognition] similarity=${maxScore.toStringAsFixed(3)} '
+        'threshold=${_verificationThreshold.toStringAsFixed(2)} '
+        'match=${matchedId ?? "none"}');
+    debugPrint(
+      '[Decision] ${classification == AuthClassification.verified ? "VERIFIED" : "REJECTED"} '
+      'trustScore=${(maxScore * 100).round()}%',
+    );
 
     if (classification == AuthClassification.failed) {
       return AuthResult(
@@ -173,17 +299,24 @@ class AuthEngineImpl implements AuthEngineInterface {
       );
     }
 
-    // 5. Liveness check — only triggered on VERIFIED.
-    final livenessResult =
-        await _livenessDetector.detectLiveness(const Stream.empty());
+    // 5. Liveness check — only triggered on VERIFIED, and only when enabled.
+    //
+    // The captured [frame] is fed to the detector as a single-element stream
+    // (was previously an empty stream, which could never carry a blink and so
+    // always timed out). When landmark data is absent and liveness is disabled
+    // at the shell level, the verified match is accepted directly.
+    if (_livenessEnabled) {
+      final livenessResult =
+          await _livenessDetector.detectLiveness(Stream.value(frame));
 
-    if (livenessResult == LivenessResult.failed) {
-      return AuthResult(
-        classification: AuthClassification.failed,
-        trustScore: maxScore,
-        matchedEmployeeId: matchedId,
-        failureReason: 'Liveness check failed',
-      );
+      if (livenessResult == LivenessResult.failed) {
+        return AuthResult(
+          classification: AuthClassification.failed,
+          trustScore: maxScore,
+          matchedEmployeeId: matchedId,
+          failureReason: 'Liveness check failed',
+        );
+      }
     }
 
     return AuthResult(

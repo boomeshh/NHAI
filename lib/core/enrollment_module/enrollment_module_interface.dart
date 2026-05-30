@@ -11,10 +11,12 @@ class EmployeeFormData {
   final String employeeId;
   final String name;
   final String department;
+  final bool allowOverwrite;
   const EmployeeFormData({
     required this.employeeId,
     required this.name,
     required this.department,
+    this.allowOverwrite = false,
   });
 }
 

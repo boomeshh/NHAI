@@ -94,8 +94,8 @@ Incremental implementation of the Flutter-based offline biometric authentication
     - Test known face pairs with known similarity scores, embedding extraction errors, liveness failure propagation, 2-second performance constraint
     - _Requirements: 6.4, 6.5, 6.6, 7.1_
 
-- [ ] 5. Implement Liveness_Detector
-  - [ ] 5.1 Implement `LivenessDetectorImpl` using MediaPipe Face Mesh
+- [x] 5. Implement Liveness_Detector
+  - [x] 5.1 Implement `LivenessDetectorImpl` using MediaPipe Face Mesh
     - Process `Stream<CameraFrame>` to extract eye landmark coordinates (p1–p6) per frame
     - Compute EAR: `(||p2-p6|| + ||p3-p5||) / (2 × ||p1-p4||)`
     - Confirm blink when EAR drops below 0.25 and recovers above 0.25 within 400 ms → return `LivenessResult.confirmed`
@@ -103,49 +103,49 @@ Incremental implementation of the Flutter-based offline biometric authentication
     - Make zero network calls
     - _Requirements: 7.2, 7.3, 7.4, 7.6_
 
-  - [ ] 5.2 Write property test for blink EAR classification
+  - [x] 5.2 Write property test for blink EAR classification
     - **Property 10: Blink detection correctly classifies EAR sequences**
     - **Validates: Requirements 7.3, 7.4**
 
-  - [ ] 5.3 Write unit tests for Liveness_Detector
+  - [x] 5.3 Write unit tests for Liveness_Detector
     - Test known EAR sequences (valid blink, too slow, never drops, recovers too late), 5-second timeout
     - _Requirements: 7.3, 7.4_
 
-- [ ] 6. Implement Enrollment_Module
-  - [ ] 6.1 Implement `EnrollmentModuleImpl` — form validation and sanitization
+- [x] 6. Implement Enrollment_Module
+  - [x] 6.1 Implement `EnrollmentModuleImpl` — form validation and sanitization
     - Implement `validateForm`: reject if any of Employee ID, Name, Department is empty or whitespace-only; return field-level errors
     - Sanitize all inputs by trimming leading/trailing whitespace before use
     - Enforce field constraints: Employee ID alphanumeric max 20 chars, Name max 60 chars, Department max 60 chars
     - _Requirements: 3.1, 3.2, 3.4_
 
-  - [ ] 6.2 Write property test for input sanitization
+  - [x] 6.2 Write property test for input sanitization
     - **Property 4: Input sanitization removes surrounding whitespace**
     - **Validates: Requirements 3.4**
 
-  - [ ] 6.3 Write property test for empty field validation
+  - [x] 6.3 Write property test for empty field validation
     - **Property 5: Empty field validation rejects incomplete submissions**
     - **Validates: Requirements 3.2**
 
-  - [ ] 6.4 Implement `EnrollmentModuleImpl` — frame selection and enrollment orchestration
+  - [x] 6.4 Implement `EnrollmentModuleImpl` — frame selection and enrollment orchestration
     - Implement `selectBestFrame`: return the frame with the strictly highest sharpness score from a non-empty list
     - Implement `enroll`: validate → check duplicate via `Storage_Manager.employeeExists` → capture frames → select best → extract embedding via `Auth_Engine` → save `EmployeeRecord` via `Storage_Manager`
     - On embedding extraction failure, return descriptive error; offer retry
     - On storage write failure, do not show success screen; display error
     - _Requirements: 3.3, 4.4, 4.5, 4.7, 5.3, 5.4_
 
-  - [ ] 6.5 Write property test for best frame selection
+  - [x] 6.5 Write property test for best frame selection
     - **Property 3: Best frame selection is a maximum**
     - **Validates: Requirements 4.4**
 
-  - [ ] 6.6 Write unit tests for Enrollment_Module
+  - [x] 6.6 Write unit tests for Enrollment_Module
     - Test duplicate ID warning, empty field rejection, storage failure (no partial record), embedding failure retry, sharpness selection with ties
     - _Requirements: 3.2, 3.3, 4.5, 4.7, 5.4_
 
-- [ ] 7. Checkpoint — Ensure all module tests pass
+- [x] 7. Checkpoint — Ensure all module tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 8. Build UI screens — Splash and Home
-  - [ ] 8.1 Implement `SplashScreen`
+- [x] 8. Build UI screens — Splash and Home
+  - [x] 8.1 Implement `SplashScreen`
     - Display for 2–3 seconds then navigate to `HomeScreen`
     - Show "Offline Workforce Authentication System", "Powered by Edge AI", NHAI logo and name
     - Use Deep Blue (#003580) background, White (#FFFFFF) text, Saffron (#FF6600) accent
@@ -153,33 +153,33 @@ Incremental implementation of the Flutter-based offline biometric authentication
     - If assets fail to load within 5 seconds, display fallback error with retry option
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
 
-  - [ ] 8.2 Write widget tests for SplashScreen
+  - [x] 8.2 Write widget tests for SplashScreen
     - Test text content, color rendering, 2–3 second transition, fallback error display
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
 
-  - [ ] 8.3 Implement `HomeScreen`
+  - [x] 8.3 Implement `HomeScreen`
     - Display "Enroll Employee" and "Authenticate Employee" buttons (min 48×48 dp touch targets)
     - Display `StatusBadge` widget showing "Offline Mode Active" when no network connection
     - Display navigation entry to `LocalLogsScreen`
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-  - [ ] 8.4 Write widget tests for HomeScreen
+  - [x] 8.4 Write widget tests for HomeScreen
     - Test button presence, offline badge visibility, touch target sizes, logs navigation
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [ ] 9. Build UI screens — Enrollment flow
-  - [ ] 9.1 Implement `EnrollmentFormScreen`
+- [x] 9. Build UI screens — Enrollment flow
+  - [x] 9.1 Implement `EnrollmentFormScreen`
     - Render form with Employee ID, Name, Department fields
     - On submit, call `EnrollmentModule.validateForm`; display field-level errors inline
     - On duplicate ID, show warning dialog with "Overwrite" / "Cancel" options
     - On valid form, navigate to `FaceCaptureScreen`
     - _Requirements: 3.1, 3.2, 3.3_
 
-  - [ ] 9.2 Write widget tests for EnrollmentFormScreen
+  - [x] 9.2 Write widget tests for EnrollmentFormScreen
     - Test field validation errors, duplicate warning dialog, navigation on valid submit
     - _Requirements: 3.1, 3.2, 3.3_
 
-  - [ ] 9.3 Implement `FaceCaptureScreen` (enrollment mode)
+  - [x] 9.3 Implement `FaceCaptureScreen` (enrollment mode)
     - Activate front-facing camera with `FaceAlignmentOverlay` widget
     - Show green border indicator when face is detected within guide
     - Show "No face detected — please position face within the guide" after 10 seconds without detection
@@ -189,19 +189,19 @@ Incremental implementation of the Flutter-based offline biometric authentication
     - On error, display human-readable message with retry option
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.7, 5.3_
 
-  - [ ] 9.4 Write widget tests for FaceCaptureScreen (enrollment)
+  - [x] 9.4 Write widget tests for FaceCaptureScreen (enrollment)
     - Test face detection indicator, 10-second timeout message, success confirmation, error retry
     - _Requirements: 4.1, 4.2, 4.3, 5.3_
 
-- [ ] 10. Build UI screens — Authentication flow
-  - [ ] 10.1 Implement `AuthenticationScreen`
+- [x] 10. Build UI screens — Authentication flow
+  - [x] 10.1 Implement `AuthenticationScreen`
     - Activate front-facing camera with `FaceAlignmentOverlay`
     - On face detection, call `Auth_Engine.authenticate`
     - While VERIFIED face check is pending liveness, display "Please blink naturally" prompt
     - On `AuthResult`, navigate to `VerificationResultScreen`
     - _Requirements: 6.1, 7.5_
 
-  - [ ] 10.2 Implement `VerificationResultScreen`
+  - [x] 10.2 Implement `VerificationResultScreen`
     - VERIFIED state: Security Green (#2E7D32) accent, show employee Name, ID, Department, Trust_Score as percentage, "Liveness: Confirmed", "Mode: Offline Active"
     - FAILED state: Red (#C62828) accent, show "Authentication Failed", failure reason, "Mode: Offline Active"
     - Display result within 500 ms of `Auth_Engine` completing classification
@@ -209,42 +209,42 @@ Incremental implementation of the Flutter-based offline biometric authentication
     - Provide "Try Again" and "Return to Home" buttons
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
 
-  - [ ] 10.3 Write property test for result screen fields
+  - [x] 10.3 Write property test for result screen fields
     - **Property 11: Result screen displays all required fields for any AuthResult**
     - **Validates: Requirements 8.1, 8.2, 8.3**
 
-  - [ ] 10.4 Write property test for auth attempt always logged
+  - [x] 10.4 Write property test for auth attempt always logged
     - **Property 12: Authentication attempt is always logged**
     - **Validates: Requirements 8.6, 9.1**
 
-  - [ ] 10.5 Write widget tests for VerificationResultScreen
+  - [x] 10.5 Write widget tests for VerificationResultScreen
     - Test VERIFIED and FAILED state rendering, color accents, all required fields, button presence
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
-- [ ] 11. Build UI screen — Local Logs
-  - [ ] 11.1 Implement `LocalLogsScreen`
+- [x] 11. Build UI screen — Local Logs
+  - [x] 11.1 Implement `LocalLogsScreen`
     - Fetch logs via `Storage_Manager.getAuthLogs(limit: 100)`
     - Display entries in reverse chronological order showing timestamp, result, trust score, employee ID
     - _Requirements: 9.2, 9.3_
 
-  - [ ] 11.2 Write widget tests for LocalLogsScreen
+  - [x] 11.2 Write widget tests for LocalLogsScreen
     - Test reverse chronological ordering, minimum 100 entries displayed, empty state
     - _Requirements: 9.2, 9.3_
 
-- [ ] 12. Wire application shell and dependency injection
-  - [ ] 12.1 Implement `app.dart` and `main.dart`
+- [x] 12. Wire application shell and dependency injection
+  - [x] 12.1 Implement `app.dart` and `main.dart`
     - Instantiate concrete implementations (`StorageManagerImpl`, `AuthEngineImpl`, `LivenessDetectorImpl`, `EnrollmentModuleImpl`) and inject via constructor or provider
     - Configure `MaterialApp` with named routes: `/` → `SplashScreen`, `/home` → `HomeScreen`, `/enroll` → `EnrollmentFormScreen`, `/authenticate` → `AuthenticationScreen`, `/logs` → `LocalLogsScreen`
     - Ensure app launches and reaches `HomeScreen` within 3 seconds regardless of network state
     - Block all operations and display critical error screen if AES key is unavailable on launch
     - _Requirements: 11.1, 11.3, 11.4, 12.1, 12.2_
 
-  - [ ] 12.2 Write integration tests for enrollment → authentication pipeline
+  - [x] 12.2 Write integration tests for enrollment → authentication pipeline
     - Test full flow: enroll employee → authenticate same employee → verify VERIFIED result with correct fields
     - Test duplicate ID overwrite flow
     - _Requirements: 3.3, 5.3, 6.4, 8.2_
 
-- [ ] 13. Final checkpoint — Ensure all tests pass
+- [x] 13. Final checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
