@@ -105,6 +105,7 @@ class MlKitFaceDetector implements FaceDetectorInterface {
         rightEyeOpenProbability: f.rightEyeOpenProbability,
         headEulerAngleY: f.headEulerAngleY,
         headEulerAngleZ: f.headEulerAngleZ,
+        headEulerAngleX: f.headEulerAngleX,
         hasLeftEye: f.landmarks[FaceLandmarkType.leftEye] != null,
         hasRightEye: f.landmarks[FaceLandmarkType.rightEye] != null,
         hasNoseBase: f.landmarks[FaceLandmarkType.noseBase] != null,
@@ -112,6 +113,9 @@ class MlKitFaceDetector implements FaceDetectorInterface {
         hasRightCheek: f.landmarks[FaceLandmarkType.rightCheek] != null,
         leftEyePosition: _landmarkXy(f, FaceLandmarkType.leftEye),
         rightEyePosition: _landmarkXy(f, FaceLandmarkType.rightEye),
+        noseBasePosition: _landmarkXy(f, FaceLandmarkType.noseBase),
+        mouthLeftPosition: _landmarkXy(f, FaceLandmarkType.leftMouth),
+        mouthRightPosition: _landmarkXy(f, FaceLandmarkType.rightMouth),
       );
     }).toList();
   }

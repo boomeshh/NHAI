@@ -8,6 +8,7 @@ import '../../core/auth_engine/auth_engine_interface.dart';
 import '../../core/camera_frame.dart';
 import '../../core/face_detection/face_detector_interface.dart';
 import '../../core/face_preprocessor.dart';
+import '../../core/recognition/stable_embedding_collector.dart';
 import '../../core/validation/biometric_validation.dart';
 import '../../models/auth_result.dart';
 import '../widgets/debug_face_overlay.dart';
@@ -105,8 +106,10 @@ class _AuthenticationScreenState extends State<AuthenticationScreen> {
   final BiometricGate _gate = BiometricGate(requireBlink: true);
   String _statusMessage = kMsgNoFace;
 
-  /// Recent valid frames whose embeddings are averaged at match time (Phase 7).
-  final List<CameraFrame> _stableFrames = [];
+  /// Collects ≥5 valid frames AFTER blink success; their embeddings are
+  /// averaged before recognition (Phase 7). Armed only once the gate passes.
+  final StableEmbeddingCollector<CameraFrame> _collector =
+      StableEmbeddingCollector<CameraFrame>(target: 5);
 
   // ── DEBUG MODE (temporary) overlay state ─────────────────────────────────
   String _debugInfo = 'DEBUG: waiting for frames…';
@@ -237,10 +240,17 @@ class _AuthenticationScreenState extends State<AuthenticationScreen> {
             : FaceAlignmentState.idle;
       });
 
-      // Accumulate valid frames so their embeddings can be averaged (Phase 7).
+      // Recognition only begins AFTER the blink gate passes. The blink itself
+      // contains an eyes-closed (invalid) frame, so we must NOT collect during
+      // the gate — we arm the collector once the gate passes and then gather a
+      // minimum of [target] valid frames whose embeddings are averaged.
+      if (!gateResult.passed) return;
+
+      if (!_collector.isArmed) _collector.arm();
+
       if (gateResult.validation.valid && faces.isNotEmpty) {
         final f = faces.first;
-        _stableFrames.add(enriched.copyWith(
+        final frame = enriched.copyWith(
           faceCount: 1,
           faceBox: FaceBoxData(
             left: f.box.left,
@@ -251,16 +261,20 @@ class _AuthenticationScreenState extends State<AuthenticationScreen> {
           landmarks: f.eyeLandmarks,
           leftEye: f.leftEyePosition,
           rightEye: f.rightEyePosition,
-        ));
-        if (_stableFrames.length > 5) _stableFrames.removeAt(0);
-      } else if (!gateResult.validation.valid) {
-        _stableFrames.clear();
+          noseBase: f.noseBasePosition,
+          mouthLeft: f.mouthLeftPosition,
+          mouthRight: f.mouthRightPosition,
+        );
+        if (_collector.offer(frame, valid: true)) {
+          debugPrint(
+              '[Recognition] Collected embedding ${_collector.count}/${_collector.target}');
+        }
       }
 
-      if (!gateResult.passed) return;
-
-      // All gates satisfied → average embeddings across the stable frames.
-      _proceedToAuthentication(List<CameraFrame>.from(_stableFrames));
+      if (_collector.isComplete) {
+        debugPrint('[Recognition] Average complete');
+        _proceedToAuthentication(_collector.items.toList());
+      }
     } catch (e, st) {
       // Surface detection/conversion errors instead of silently stalling at 0/3.
       debugPrint('[AuthScreen] _handleCameraImage error: $e\n$st');
@@ -504,7 +518,7 @@ class _AuthenticationScreenState extends State<AuthenticationScreen> {
     _frameSub = null;
 
     _gate.reset();
-    _stableFrames.clear();
+    _collector.reset();
     setState(() {
       _phase = _ScreenPhase.scanning;
       _alignmentState = FaceAlignmentState.idle;

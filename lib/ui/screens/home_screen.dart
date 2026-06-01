@@ -109,7 +109,7 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
 
-              const SizedBox(height: 48),
+              const SizedBox(height: 28),
 
               // ── Primary action buttons (Requirements 2.1, 2.2) ───────────
 
@@ -123,13 +123,40 @@ class HomeScreen extends StatelessWidget {
 
               const SizedBox(height: 20),
 
-              // "Authenticate Employee" button — navigates to /authenticate
+              // "Authenticate Employee" — face auth, then auto check-in/out
               _PrimaryActionButton(
                 key: const Key('authenticate_employee_button'),
                 label: 'Authenticate Employee',
                 icon: Icons.verified_user,
                 onPressed: () =>
                     Navigator.of(context).pushNamed('/authenticate'),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Attendance dashboard + history navigation.
+              Row(
+                children: [
+                  Expanded(
+                    child: _SecondaryActionButton(
+                      key: const Key('attendance_dashboard_button'),
+                      label: 'Dashboard',
+                      icon: Icons.dashboard_outlined,
+                      onPressed: () =>
+                          Navigator.of(context).pushNamed('/dashboard'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SecondaryActionButton(
+                      key: const Key('attendance_history_button'),
+                      label: 'History',
+                      icon: Icons.event_note_outlined,
+                      onPressed: () => Navigator.of(context)
+                          .pushNamed('/attendance-history'),
+                    ),
+                  ),
+                ],
               ),
 
               const Spacer(),
@@ -197,6 +224,40 @@ class _PrimaryActionButton extends StatelessWidget {
           elevation: 3,
           shadowColor: _saffron.withValues(alpha: 0.4),
         ),
+      ),
+    );
+  }
+}
+
+// ── Secondary Action Button (attendance dashboard / history) ───────────────────
+
+class _SecondaryActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  static const Color _white = Color(0xFFFFFFFF);
+  static const Color _saffron = Color(0xFFFF6600);
+
+  const _SecondaryActionButton({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 20),
+      label: Text(label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: _white,
+        side: const BorderSide(color: _saffron, width: 1.5),
+        minimumSize: const Size(0, 52),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }

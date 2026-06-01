@@ -4,6 +4,8 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 import '../camera_frame.dart';
 import '../face_preprocessor.dart';
 import '../recognition/face_aligner.dart';
+import '../recognition/recognition_debug.dart';
+import '../recognition/five_point_aligner.dart';
 import 'embedding_error.dart';
 import 'model_runner_interface.dart';
 
@@ -136,16 +138,38 @@ class TfliteModelRunner implements ModelRunnerInterface {
   List<List<List<double>>> _buildCrop(CameraFrame frame) {
     final List<int> rgb = frame.rgbBytes ?? frame.bytes;
 
-    // 1. Aligned crop (eye landmarks present).
-    final leftEye = frame.leftEye;
-    final rightEye = frame.rightEye;
-    if (frame.rgbBytes != null && leftEye != null && rightEye != null) {
-      final aligned = FaceAligner.align(
-        rgb, frame.width, frame.height, leftEye, rightEye, _inputSize);
+    // Experiment harness: restrict which alignment path may run. auto = both.
+    final forced = RecognitionDebugMode.forcedAlignment;
+    final allow5 =
+        forced == AlignmentMode.auto || forced == AlignmentMode.fivePoint;
+    final allow2 =
+        forced == AlignmentMode.auto || forced == AlignmentMode.twoPoint;
+
+    // 1. Preferred: 5-point affine alignment (eyes + nose + mouth corners).
+    final le = frame.leftEye;
+    final re = frame.rightEye;
+    final nb = frame.noseBase;
+    final ml = frame.mouthLeft;
+    final mr = frame.mouthRight;
+    if (allow5 &&
+        frame.rgbBytes != null &&
+        le != null && re != null && nb != null && ml != null && mr != null) {
+      final aligned = FivePointAligner.align(
+          rgb, frame.width, frame.height, [le, re, nb, ml, mr], _inputSize);
       if (aligned != null) {
-        debugPrint('[Alignment] angle=${aligned.angleDegrees.toStringAsFixed(2)}');
-        debugPrint('[Alignment] eyeDistance=${aligned.eyeDistance.toStringAsFixed(2)}');
-        debugPrint('[Alignment] success=true');
+        debugPrint('[Alignment] mode=5point success=true');
+        return aligned;
+      }
+    }
+
+    // 2. Fallback: 2-point eye alignment (eyes present).
+    if (allow2 && frame.rgbBytes != null && le != null && re != null) {
+      final aligned =
+          FaceAligner.align(rgb, frame.width, frame.height, le, re, _inputSize);
+      if (aligned != null) {
+        debugPrint('[Alignment] mode=2point '
+            'angle=${aligned.angleDegrees.toStringAsFixed(2)} '
+            'eyeDistance=${aligned.eyeDistance.toStringAsFixed(2)} success=true');
         return aligned.tensor;
       }
     }

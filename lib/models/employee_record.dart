@@ -1,11 +1,17 @@
 import 'face_embedding.dart';
+import 'face_template.dart';
 
 class EmployeeRecord {
   final String employeeId; // alphanumeric, max 20 chars
   final String name; // max 60 chars
   final String department; // max 60 chars
-  final FaceEmbedding embedding; // 128-dimensional float vector
+  final FaceEmbedding embedding; // primary/frontal template (backward compat)
   final DateTime enrolledAt; // UTC
+
+  /// Multi-pose gallery (frontal/left/right/up/down). Null/absent for legacy
+  /// single-template employees enrolled before the multi-pose upgrade — those
+  /// continue to match via [embedding].
+  final List<FaceTemplate>? templates;
 
   const EmployeeRecord({
     required this.employeeId,
@@ -13,7 +19,11 @@ class EmployeeRecord {
     required this.department,
     required this.embedding,
     required this.enrolledAt,
+    this.templates,
   });
+
+  /// True when this record carries a multi-pose gallery.
+  bool get hasGallery => templates != null && templates!.isNotEmpty;
 
   Map<String, dynamic> toJson() => {
         'employeeId': employeeId,
@@ -21,6 +31,9 @@ class EmployeeRecord {
         'department': department,
         'embedding': embedding.toJson(),
         'enrolledAt': enrolledAt.toUtc().toIso8601String(),
+        // Omitted when null so legacy records serialize byte-identically.
+        if (templates != null)
+          'templates': templates!.map((t) => t.toJson()).toList(),
       };
 
   factory EmployeeRecord.fromJson(Map<String, dynamic> json) => EmployeeRecord(
@@ -30,6 +43,11 @@ class EmployeeRecord {
         embedding:
             FaceEmbedding.fromJson(json['embedding'] as Map<String, dynamic>),
         enrolledAt: DateTime.parse(json['enrolledAt'] as String).toUtc(),
+        templates: json['templates'] == null
+            ? null
+            : (json['templates'] as List)
+                .map((e) => FaceTemplate.fromJson(e as Map<String, dynamic>))
+                .toList(),
       );
 
   @override

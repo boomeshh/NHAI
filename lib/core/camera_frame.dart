@@ -32,10 +32,19 @@ class CameraFrame {
   /// Detected face region in [rgbBytes] pixel coordinates. Optional.
   final FaceBoxData? faceBox;
 
-  /// Left/right eye centre `[x, y]` in [rgbBytes] pixel coordinates, used for
-  /// similarity-transform face alignment. Optional (null → square-crop fallback).
+  /// Landmark centres `[x, y]` in [rgbBytes] pixel coordinates, used for
+  /// face alignment (5-point when nose+mouth present, else 2-point eyes,
+  /// else square-crop fallback). Optional.
   final List<double>? leftEye;
   final List<double>? rightEye;
+  final List<double>? noseBase;
+  final List<double>? mouthLeft;
+  final List<double>? mouthRight;
+
+  /// Measured ML Kit head angles (degrees) for this frame, carried for
+  /// enrollment diagnostics. Optional (null when unavailable).
+  final double? yaw;
+  final double? pitch;
 
   /// Number of faces detected in this frame. Defaults to 1 so existing callers
   /// (and tests) behave as a single-face frame; the camera screen sets the real
@@ -55,6 +64,11 @@ class CameraFrame {
     this.faceBox,
     this.leftEye,
     this.rightEye,
+    this.noseBase,
+    this.mouthLeft,
+    this.mouthRight,
+    this.yaw,
+    this.pitch,
     this.faceCount = 1,
   });
 
@@ -67,6 +81,11 @@ class CameraFrame {
     FaceBoxData? faceBox,
     List<double>? leftEye,
     List<double>? rightEye,
+    List<double>? noseBase,
+    List<double>? mouthLeft,
+    List<double>? mouthRight,
+    double? yaw,
+    double? pitch,
     int? faceCount,
   }) =>
       CameraFrame(
@@ -82,6 +101,11 @@ class CameraFrame {
         faceBox: faceBox ?? this.faceBox,
         leftEye: leftEye ?? this.leftEye,
         rightEye: rightEye ?? this.rightEye,
+        noseBase: noseBase ?? this.noseBase,
+        mouthLeft: mouthLeft ?? this.mouthLeft,
+        mouthRight: mouthRight ?? this.mouthRight,
+        yaw: yaw ?? this.yaw,
+        pitch: pitch ?? this.pitch,
         faceCount: faceCount ?? this.faceCount,
       );
 }

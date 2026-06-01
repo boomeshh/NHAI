@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import 'app.dart';
+import 'attendance/integration/attendance_module.dart';
 import 'core/auth_engine/auth_engine_impl.dart';
 import 'core/auth_engine/tflite_model_runner.dart';
 import 'core/enrollment_module/enrollment_module_impl.dart';
@@ -38,12 +39,17 @@ Future<void> main() async {
       storage: storageManager,
     );
 
+    // Attendance engine wiring (integration phase). In-memory repositories,
+    // employees bridged from the biometric store. No AWS sync / geo-fencing.
+    final attendanceModule = AttendanceModule.inMemory(storage: storageManager);
+
     runApp(
       NhaiApp(
         storageManager: storageManager,
         authEngine: authEngine,
         enrollmentModule: enrollmentModule,
         faceDetector: faceDetector,
+        attendanceModule: attendanceModule,
       ),
     );
   } catch (e) {

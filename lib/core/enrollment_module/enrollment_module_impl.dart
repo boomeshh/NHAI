@@ -1,7 +1,12 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import '../camera_frame.dart';
 import '../recognition/embedding_math.dart';
+import '../recognition/gallery_audit.dart';
+import '../recognition/reenrollment_migration.dart' show kRecognitionPipelineVersion;
 import '../../models/employee_record.dart';
 import '../../models/face_embedding.dart';
+import '../../models/face_pose.dart';
+import '../../models/face_template.dart';
 import '../auth_engine/auth_engine_interface.dart';
 import '../auth_engine/embedding_error.dart';
 import '../storage_manager/storage_manager_interface.dart';
@@ -268,6 +273,166 @@ class EnrollmentModuleImpl implements EnrollmentModuleInterface {
       );
     }
 
+    return EnrollmentResult(success: true, record: record);
+  }
+
+  /// Read-only mirror of TfliteModelRunner._buildCrop precedence — reports which
+  /// alignment path the runner WOULD take for [f] (diagnostics only).
+  static String _alignMode(CameraFrame f) {
+    final has5 = f.rgbBytes != null &&
+        f.leftEye != null &&
+        f.rightEye != null &&
+        f.noseBase != null &&
+        f.mouthLeft != null &&
+        f.mouthRight != null;
+    if (has5) return '5point';
+    if (f.rgbBytes != null && f.leftEye != null && f.rightEye != null) {
+      return '2point';
+    }
+    return 'square';
+  }
+
+  // Nominal (target) Euler angles per pose, stored as template metadata.
+  static const Map<FacePose, List<double>> _nominalAngles = {
+    FacePose.frontal: [0.0, 0.0],
+    FacePose.left: [-20.0, 0.0],
+    FacePose.right: [20.0, 0.0],
+    FacePose.up: [0.0, 15.0],
+    FacePose.down: [0.0, -15.0],
+  };
+
+  /// Multi-pose enrollment (Phase 1): builds one averaged [FaceTemplate] per
+  /// captured pose and stores them as the employee's gallery. The frontal
+  /// template's embedding is also stored as [EmployeeRecord.embedding] for
+  /// backward compatibility with single-template matching.
+  @override
+  Future<EnrollmentResult> enrollMultiPose(
+    EmployeeFormData formData,
+    Map<FacePose, List<CameraFrame>> posedFrames,
+  ) async {
+    assert(_authEngine != null && _storage != null);
+
+    final validation =
+        validateForm(formData.employeeId, formData.name, formData.department);
+    if (!validation.isValid) {
+      return EnrollmentResult(
+          success: false, errorMessage: validation.fieldErrors.values.join(' '));
+    }
+    final trimmedId = formData.employeeId.trim();
+    final trimmedName = formData.name.trim();
+    final trimmedDepartment = formData.department.trim();
+
+    if (await _storage!.employeeExists(trimmedId) && !formData.allowOverwrite) {
+      return EnrollmentResult(
+        success: false,
+        errorMessage: 'An employee with ID "$trimmedId" already exists.',
+      );
+    }
+
+    final now = DateTime.now().toUtc();
+    final templates = <FaceTemplate>[];
+    for (final pose in posedFrames.keys) {
+      final frames = posedFrames[pose] ?? const [];
+      if (frames.isEmpty) continue;
+      debugPrint('[Enrollment] pose=${pose.label}');
+      final vectors = <List<double>>[];
+      for (final f in frames) {
+        try {
+          final e = await _authEngine!.extractEmbedding(f);
+          if (EmbeddingMath.isUsable(e.vector)) vectors.add(e.vector);
+        } on EmbeddingError {
+          // Skip a bad frame; keep the good ones for this pose.
+        }
+      }
+      if (vectors.isEmpty) continue;
+      final angles = _nominalAngles[pose] ?? const [0.0, 0.0];
+      final avg = EmbeddingMath.averageNormalized(vectors);
+      templates.add(FaceTemplate(
+        embedding: FaceEmbedding(avg),
+        poseLabel: pose,
+        yaw: angles[0],
+        pitch: angles[1],
+        qualityScore: vectors.length / frames.length,
+        createdAt: now,
+        pipelineVersion: kRecognitionPipelineVersion,
+      ));
+      debugPrint('[Template] stored=${vectors.length}');
+      // Forensic: log the ACTUAL measured head angles for this pose's frames.
+      final ys = frames.map((f) => f.yaw).whereType<double>().toList();
+      final ps = frames.map((f) => f.pitch).whereType<double>().toList();
+      String mean(List<double> xs) => xs.isEmpty
+          ? 'n/a'
+          : (xs.reduce((a, b) => a + b) / xs.length).toStringAsFixed(1);
+      debugPrint('[TemplateAudit] pose=${pose.label} '
+          'measuredYaw=${mean(ys)} measuredPitch=${mean(ps)} '
+          'magnitude=${EmbeddingMath.magnitude(avg).toStringAsFixed(4)}');
+
+      // Forensic: per-template quality (read-only diagnostics).
+      final boxes = frames.map((f) => f.faceBox).whereType<FaceBoxData>().toList();
+      final boxSize = boxes.isEmpty
+          ? 'n/a'
+          : '${(boxes.map((b) => b.width).reduce((a, b) => a + b) / boxes.length).round()}'
+              'x${(boxes.map((b) => b.height).reduce((a, b) => a + b) / boxes.length).round()}';
+      final modes = frames.map(_alignMode).toList();
+      final mode = modes.toSet().length == 1
+          ? modes.first
+          : '${modes.where((m) => m == "5point").length}x5point/${modes.length}';
+      debugPrint('[TemplateQuality] pose=${pose.label} '
+          'yaw=${mean(ys)} pitch=${mean(ps)} '
+          'embeddingMagnitude=${EmbeddingMath.magnitude(avg).toStringAsFixed(4)} '
+          'faceBoxSize=$boxSize alignmentMode=$mode '
+          'usable=${vectors.length}/${frames.length}');
+    }
+
+    if (templates.isEmpty) {
+      return const EnrollmentResult(
+        success: false,
+        errorMessage: 'No usable face frames captured. Please retry.',
+      );
+    }
+
+    // Forensic: pairwise template similarity — flags a degenerate gallery.
+    final pairs = GalleryAudit.pairwiseCosines(templates);
+    pairs.forEach((k, v) {
+      debugPrint('[GalleryAudit] ${k.toLowerCase()}=${v.toStringAsFixed(2)}');
+      if (v > 0.95) {
+        debugPrint('[GalleryAudit] FLAG ${k.toLowerCase()}=${v.toStringAsFixed(2)} '
+            '>0.95 nearly identical');
+      }
+      if (v < 0.50) {
+        debugPrint('[GalleryAudit] FLAG ${k.toLowerCase()}=${v.toStringAsFixed(2)} '
+            '<0.50 possible over-warp / different identity');
+      }
+    });
+    if (GalleryAudit.anyNearIdentical(pairs)) {
+      debugPrint('[GalleryAudit] WARNING: templates nearly identical (gallery ineffective)');
+    }
+    if (GalleryAudit.anyBelow(pairs)) {
+      debugPrint('[GalleryAudit] WARNING: a template diverges <0.50 (possible warp degradation)');
+    }
+
+    final frontal = templates.firstWhere(
+      (t) => t.poseLabel == FacePose.frontal,
+      orElse: () => templates.first,
+    );
+    final record = EmployeeRecord(
+      employeeId: trimmedId,
+      name: trimmedName,
+      department: trimmedDepartment,
+      embedding: frontal.embedding, // backward-compat single-template field
+      enrolledAt: now,
+      templates: templates,
+    );
+
+    try {
+      await _storage!.saveEmployeeRecord(record);
+    } catch (e) {
+      return EnrollmentResult(
+        success: false,
+        errorMessage: 'Failed to save the enrollment record. (${e.toString()})',
+      );
+    }
+    debugPrint('[Gallery] templates=${templates.length}');
     return EnrollmentResult(success: true, record: record);
   }
 }

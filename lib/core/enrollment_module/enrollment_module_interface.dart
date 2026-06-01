@@ -1,4 +1,5 @@
 import '../../models/employee_record.dart';
+import '../../models/face_pose.dart';
 import '../camera_frame.dart';
 
 class ValidationResult {
@@ -37,4 +38,10 @@ abstract class EnrollmentModuleInterface {
   CameraFrame selectBestFrame(List<CameraFrame> frames);
   Future<EnrollmentResult> enroll(
       EmployeeFormData formData, List<CameraFrame> frames);
+
+  /// Multi-pose enrollment: builds one averaged [FaceTemplate] per captured
+  /// pose and stores them as the employee's gallery (frontal also mirrored into
+  /// the legacy single-embedding field for backward compatibility).
+  Future<EnrollmentResult> enrollMultiPose(
+      EmployeeFormData formData, Map<FacePose, List<CameraFrame>> posedFrames);
 }

@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 
+import 'attendance/integration/attendance_module.dart';
 import 'core/auth_engine/auth_engine_interface.dart';
 import 'core/enrollment_module/enrollment_module_interface.dart';
 import 'core/face_detection/face_detector_interface.dart';
 import 'core/storage_manager/storage_manager_interface.dart';
+import 'ui/screens/attendance_dashboard_screen.dart';
+import 'ui/screens/attendance_history_screen.dart';
 import 'ui/screens/authentication_screen.dart' as auth_screen;
 import 'ui/screens/enrollment_form_screen.dart';
 import 'ui/screens/face_capture_screen.dart' as face_capture;
 import 'ui/screens/home_screen.dart';
 import 'ui/screens/local_logs_screen.dart';
+import 'ui/screens/multi_pose_enrollment_screen.dart';
 import 'ui/screens/splash_screen.dart';
 import 'ui/screens/verification_result_screen.dart';
 
@@ -19,12 +23,19 @@ class NhaiApp extends StatelessWidget {
   final String initialRoute;
   final face_capture.FrameProvider? faceCaptureFrameProvider;
   final auth_screen.FrameProvider? authFrameProvider;
+
+  /// Injectable pose source for the guided multi-pose enrollment screen (tests).
+  final PoseProvider? multiPoseProvider;
   final int faceCaptureMinFrameCount;
   final Duration faceCaptureNoFaceTimeout;
 
   /// Real face detector (ML Kit) used by the camera screens. Null in tests,
   /// which inject synthetic frames via the frame providers instead.
   final FaceDetectorInterface? faceDetector;
+
+  /// Attendance engine wiring. When present, a verified authentication marks
+  /// attendance and the Dashboard / History routes become available.
+  final AttendanceModule? attendanceModule;
 
   const NhaiApp({
     super.key,
@@ -37,6 +48,8 @@ class NhaiApp extends StatelessWidget {
     this.faceCaptureMinFrameCount = 3,
     this.faceCaptureNoFaceTimeout = const Duration(seconds: 10),
     this.faceDetector,
+    this.attendanceModule,
+    this.multiPoseProvider,
   });
 
   @override
@@ -67,6 +80,11 @@ class NhaiApp extends StatelessWidget {
               noFaceTimeout: faceCaptureNoFaceTimeout,
               faceDetector: faceDetector,
             ),
+        '/multi-pose-enroll': (_) => MultiPoseEnrollmentScreen(
+              enrollmentModule: enrollmentModule,
+              poseProvider: multiPoseProvider,
+              faceDetector: faceDetector,
+            ),
         '/authenticate': (_) => auth_screen.AuthenticationScreen(
               authEngine: authEngine,
               frameProvider: authFrameProvider,
@@ -74,10 +92,19 @@ class NhaiApp extends StatelessWidget {
             ),
         '/verification-result': (_) => VerificationResultScreen(
               storageManager: storageManager,
+              attendanceCoordinator: attendanceModule?.coordinator,
             ),
         '/logs': (_) => LocalLogsScreen(
               storageManager: storageManager,
             ),
+        if (attendanceModule != null) ...{
+          '/dashboard': (_) => AttendanceDashboardScreen(
+                dashboard: attendanceModule!.dashboard,
+              ),
+          '/attendance-history': (_) => AttendanceHistoryScreen(
+                attendance: attendanceModule!.attendance,
+              ),
+        },
       },
     );
   }

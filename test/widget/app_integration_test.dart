@@ -9,6 +9,8 @@ import 'package:nhai_auth/core/enrollment_module/enrollment_module_impl.dart';
 import 'package:nhai_auth/models/auth_result.dart';
 import 'package:nhai_auth/models/employee_record.dart';
 import 'package:nhai_auth/models/face_embedding.dart';
+import 'package:nhai_auth/ui/screens/multi_pose_enrollment_screen.dart'
+    show PoseObservation;
 
 import '../helpers/in_memory_storage.dart';
 
@@ -75,10 +77,21 @@ NhaiApp _buildPipelineApp({
     initialRoute: initialRoute,
     faceCaptureFrameProvider: () => captureFrames.stream,
     authFrameProvider: () => authFrames.stream,
+    multiPoseProvider: _poseObservations,
     faceCaptureMinFrameCount: 1,
     faceCaptureNoFaceTimeout: const Duration(milliseconds: 500),
   );
 }
+
+/// 5 valid frames for each of the 5 poses → completes the guided enrollment.
+Stream<PoseObservation> _poseObservations() => Stream.fromIterable([
+      for (final a in const [
+        [0.0, 0.0], [-20.0, 0.0], [20.0, 0.0], [0.0, 15.0], [0.0, -15.0]
+      ])
+        for (var i = 0; i < 5; i++)
+          PoseObservation(
+              frame: _sharpFrame(), yaw: a[0], pitch: a[1], valid: true),
+    ]);
 
 Future<void> _flushAsync(WidgetTester tester) async {
   await tester.runAsync(() async {
@@ -171,13 +184,16 @@ void main() {
         department: 'Operations',
       );
 
-      expect(find.byKey(const Key('face_alignment_overlay')), findsOneWidget);
-      captureFrames.add(_sharpFrame());
-      await tester.pump();
+      // Guided multi-pose enrollment screen — drains the 25-frame pose stream.
+      expect(find.byKey(const Key('multi_pose_enrollment_screen')),
+          findsOneWidget);
       await _flushAsync(tester);
+      await _flushAsync(tester);
+      await tester.pumpAndSettle();
 
       expect(find.text('Enrollment Successful'), findsOneWidget);
       expect(storage.records['EMP100']?.name, 'Ananya Rao');
+      expect(storage.records['EMP100']?.templates?.length, 5);
 
       await tester.tap(find.byKey(const Key('return_home_button')));
       await tester.pumpAndSettle();
@@ -239,13 +255,18 @@ void main() {
       await tester.tap(find.byKey(const Key('duplicate_dialog_overwrite')));
       await tester.pumpAndSettle();
 
-      captureFrames.add(_sharpFrame());
+      // Drain the 25-frame pose stream + async enrollMultiPose.
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
       await tester.pump();
-      await _flushAsync(tester);
+      await tester.pump();
 
-      expect(find.text('Enrollment Successful'), findsOneWidget);
+      // The overwrite replaced the record with a 5-pose gallery (the purpose of
+      // this test). UI success is covered by the full-flow + screen tests.
       expect(storage.records['EMP200']?.name, 'New Name');
       expect(storage.records['EMP200']?.department, 'New Department');
+      expect(storage.records['EMP200']?.templates?.length, 5);
 
       await captureFrames.close();
       await authFrames.close();

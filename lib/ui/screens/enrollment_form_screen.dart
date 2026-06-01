@@ -125,10 +125,10 @@ class _EnrollmentFormScreenState extends State<EnrollmentFormScreen> {
         // Operator chose "Overwrite" — proceed to face capture.
       }
 
-      // 3. Navigate to face capture (Requirement 3.3).
+      // 3. Navigate to guided multi-pose enrollment (Requirement 3.3).
       if (mounted) {
         Navigator.of(context).pushNamed(
-          '/face-capture',
+          '/multi-pose-enroll',
           arguments: EmployeeFormData(
             employeeId: trimmedId,
             name: name.trim(),

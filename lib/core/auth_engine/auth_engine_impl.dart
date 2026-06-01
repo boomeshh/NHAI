@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show debugPrint;
 import '../recognition/embedding_math.dart';
+import '../recognition/gallery_audit.dart';
+import '../recognition/gallery_matcher.dart';
 import '../../models/face_embedding.dart';
+import '../../models/face_pose.dart';
 import '../../models/auth_result.dart';
 import '../../models/employee_record.dart';
 import '../camera_frame.dart';
@@ -260,26 +263,56 @@ class AuthEngineImpl implements AuthEngineInterface {
       FaceEmbedding liveEmbedding, CameraFrame frame) async {
     final List<EmployeeRecord> records = await _storage.getAllEmployeeRecords();
 
+    // Forensic diagnostics — provenance of live vs stored embeddings. A modern
+    // (aligned + L2-normalized) embedding has magnitude ≈ 1.0; a legacy stored
+    // embedding (pre-alignment / pre-normalization) will not.
+    final live = liveEmbedding.vector;
+    debugPrint('[Forensic] live embedding length=${live.length} '
+        'magnitude=${EmbeddingMath.magnitude(live).toStringAsFixed(4)}');
+
+    // Forensic per-template audit (read-only; does NOT affect the decision).
+    for (final record in records) {
+      final scores = GalleryAudit.scoreTemplates(live, record);
+      final parts = scores
+          .where((s) => s.score != null)
+          .map((s) => '${s.pose.label}=${s.score!.toStringAsFixed(2)}')
+          .join(' ');
+      debugPrint('[MatcherAudit] employee=${record.employeeId} $parts '
+          'bestPose=${GalleryAudit.bestPose(scores)?.label ?? "none"}');
+      for (final s in scores.where((s) => s.skipReason != null)) {
+        debugPrint('[TemplateSkipped] employee=${record.employeeId} '
+            'pose=${s.pose.label} reason=${s.skipReason}');
+      }
+    }
+
     double maxScore = 0.0;
     String? matchedId;
     int skipped = 0;
+    FacePose? matchedPose;
+    int matchedTemplateCount = 0;
     for (final record in records) {
-      final stored = record.embedding.vector;
-      // Phase 4 — skip corrupt / mismatched-length / degenerate stored records.
-      if (stored.length != liveEmbedding.vector.length ||
-          !EmbeddingMath.isUsable(stored)) {
+      debugPrint('[Gallery] employee=${record.employeeId} '
+          'templates=${record.hasGallery ? record.templates!.length : 1}');
+      // Phase 2/4 — gallery matcher: max similarity across pose templates, with
+      // backward-compatible fallback to a single legacy embedding.
+      final m = GalleryMatcher.matchEmployee(live, record);
+      if (m.templateCount == 0) {
         skipped++;
         continue;
       }
-      final score = cosineSimilarity(liveEmbedding.vector, stored);
-      if (score > maxScore) {
-        maxScore = score;
+      if (m.score > maxScore) {
+        maxScore = m.score;
         matchedId = record.employeeId;
+        matchedPose = m.bestPose;
+        matchedTemplateCount = m.templateCount;
       }
     }
     if (skipped > 0) {
       debugPrint('[Recognition] skipped $skipped invalid stored record(s)');
     }
+    debugPrint('[Matcher] bestPose=${matchedPose?.label ?? "SINGLE"} '
+        'similarity=${maxScore.toStringAsFixed(3)} '
+        'templates=$matchedTemplateCount');
 
     final classification = classify(maxScore);
     // Phase 9 — structured security logs.

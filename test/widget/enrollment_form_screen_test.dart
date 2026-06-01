@@ -7,6 +7,7 @@ import 'package:nhai_auth/core/storage_manager/storage_manager_interface.dart';
 import 'package:nhai_auth/core/camera_frame.dart';
 import 'package:nhai_auth/models/employee_record.dart';
 import 'package:nhai_auth/models/auth_log_entry.dart';
+import 'package:nhai_auth/models/face_pose.dart';
 
 /// Widget tests for EnrollmentFormScreen.
 ///
@@ -57,6 +58,11 @@ class _StubEnrollmentModule implements EnrollmentModuleInterface {
   Future<EnrollmentResult> enroll(
           EmployeeFormData formData, List<CameraFrame> frames) async =>
       const EnrollmentResult(success: true);
+
+  @override
+  Future<EnrollmentResult> enrollMultiPose(EmployeeFormData formData,
+          Map<FacePose, List<CameraFrame>> posedFrames) async =>
+      throw UnimplementedError();
 }
 
 /// A stub [StorageManagerInterface] whose [employeeExists] return value is
@@ -106,7 +112,7 @@ Widget buildTestApp({
             enrollmentModule: enrollmentModule,
             storageManager: storageManager,
           ),
-      '/face-capture': (_) =>
+      '/multi-pose-enroll': (_) =>
           const Scaffold(body: Text('FaceCaptureScreen')),
     },
   );

@@ -7,6 +7,7 @@ import 'package:nhai_auth/core/camera_frame.dart';
 import 'package:nhai_auth/core/enrollment_module/enrollment_module_interface.dart';
 import 'package:nhai_auth/models/employee_record.dart';
 import 'package:nhai_auth/models/face_embedding.dart';
+import 'package:nhai_auth/models/face_pose.dart';
 import 'package:nhai_auth/ui/screens/face_capture_screen.dart';
 import 'package:nhai_auth/ui/widgets/face_alignment_overlay.dart';
 
@@ -35,6 +36,11 @@ class _FakeEnrollmentModule implements EnrollmentModuleInterface {
       EmployeeFormData formData, List<CameraFrame> frames) async {
     return enrollResult;
   }
+
+  @override
+  Future<EnrollmentResult> enrollMultiPose(EmployeeFormData formData,
+          Map<FacePose, List<CameraFrame>> posedFrames) async =>
+      throw UnimplementedError();
 }
 
 /// An [EnrollmentModuleInterface] whose [enroll] method never completes,
@@ -55,6 +61,11 @@ class _SlowEnrollmentModule implements EnrollmentModuleInterface {
   @override
   Future<EnrollmentResult> enroll(
           EmployeeFormData formData, List<CameraFrame> frames) =>
+      _future;
+
+  @override
+  Future<EnrollmentResult> enrollMultiPose(EmployeeFormData formData,
+          Map<FacePose, List<CameraFrame>> posedFrames) =>
       _future;
 }
 
@@ -90,6 +101,11 @@ class _CountingEnrollmentModule implements EnrollmentModuleInterface {
       ),
     );
   }
+
+  @override
+  Future<EnrollmentResult> enrollMultiPose(EmployeeFormData formData,
+          Map<FacePose, List<CameraFrame>> posedFrames) async =>
+      throw UnimplementedError();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

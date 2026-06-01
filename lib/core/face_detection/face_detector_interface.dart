@@ -29,9 +29,10 @@ class DetectedFace {
   final double? leftEyeOpenProbability;
   final double? rightEyeOpenProbability;
 
-  /// Head Euler angles in degrees (yaw = Y, roll = Z).
+  /// Head Euler angles in degrees (yaw = Y, roll = Z, pitch = X).
   final double? headEulerAngleY;
   final double? headEulerAngleZ;
+  final double? headEulerAngleX;
 
   /// Presence of the five critical landmarks for occlusion detection.
   final bool hasLeftEye;
@@ -40,9 +41,12 @@ class DetectedFace {
   final bool hasLeftCheek;
   final bool hasRightCheek;
 
-  /// Left/right eye centre positions `[x, y]` in image pixels, for alignment.
+  /// Landmark positions `[x, y]` in image pixels, for 5-point alignment.
   final List<double>? leftEyePosition;
   final List<double>? rightEyePosition;
+  final List<double>? noseBasePosition;
+  final List<double>? mouthLeftPosition;
+  final List<double>? mouthRightPosition;
 
   const DetectedFace({
     required this.box,
@@ -51,6 +55,7 @@ class DetectedFace {
     this.rightEyeOpenProbability,
     this.headEulerAngleY,
     this.headEulerAngleZ,
+    this.headEulerAngleX,
     this.hasLeftEye = false,
     this.hasRightEye = false,
     this.hasNoseBase = false,
@@ -58,6 +63,9 @@ class DetectedFace {
     this.hasRightCheek = false,
     this.leftEyePosition,
     this.rightEyePosition,
+    this.noseBasePosition,
+    this.mouthLeftPosition,
+    this.mouthRightPosition,
   });
 }
 

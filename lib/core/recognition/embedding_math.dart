@@ -46,6 +46,19 @@ class EmbeddingMath {
     return math.sqrt(sumSq) > minMagnitude;
   }
 
+  /// Cosine similarity between two equal-length vectors (0 if degenerate).
+  static double cosine(List<double> a, List<double> b) {
+    if (a.length != b.length || a.isEmpty) return 0.0;
+    double dot = 0, na = 0, nb = 0;
+    for (var i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      na += a[i] * a[i];
+      nb += b[i] * b[i];
+    }
+    final denom = math.sqrt(na) * math.sqrt(nb);
+    return denom == 0 ? 0.0 : dot / denom;
+  }
+
   /// Length-agnostic usability check: non-empty, all finite, non-degenerate
   /// magnitude. Used at runtime where the embedding dimension is model-defined.
   static bool isUsable(List<double> v) {

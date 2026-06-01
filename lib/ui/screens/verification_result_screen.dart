@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../attendance/integration/attendance_coordinator.dart';
 import '../../core/storage_manager/storage_manager_interface.dart';
 import '../../models/auth_log_entry.dart';
 import '../../models/auth_result.dart';
@@ -10,10 +11,15 @@ class VerificationResultScreen extends StatefulWidget {
   final StorageManagerInterface storageManager;
   final AuthResult? result;
 
+  /// When provided, a verified result also marks attendance (check-in/out
+  /// auto-resolved). Null in tests / pure-authentication flows.
+  final AttendanceCoordinator? attendanceCoordinator;
+
   const VerificationResultScreen({
     super.key,
     required this.storageManager,
     this.result,
+    this.attendanceCoordinator,
   });
 
   @override
@@ -33,12 +39,16 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
   bool _logAttempted = false;
   bool _employeeLookupStarted = false;
 
+  bool _attendanceStarted = false;
+  String? _attendanceMessage;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _resolveResult();
     _logOnce();
     _loadMatchedEmployee();
+    _markAttendanceOnce();
   }
 
   @override
@@ -49,10 +59,35 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
       _matchedEmployee = null;
       _logAttempted = false;
       _employeeLookupStarted = false;
+      _attendanceStarted = false;
+      _attendanceMessage = null;
       _resolveResult();
       _logOnce();
       _loadMatchedEmployee();
+      _markAttendanceOnce();
     }
+  }
+
+  /// Integration hook: a verified result marks attendance exactly once.
+  void _markAttendanceOnce() {
+    final coordinator = widget.attendanceCoordinator;
+    final result = _result;
+    if (coordinator == null ||
+        result == null ||
+        result.classification != AuthClassification.verified ||
+        _attendanceStarted) {
+      return;
+    }
+    _attendanceStarted = true;
+    coordinator
+        .markFromAuthResult(result, now: DateTime.now())
+        .then((outcome) {
+      if (!mounted) return;
+      setState(() => _attendanceMessage = outcome.message);
+    }).catchError((Object e) {
+      if (!mounted) return;
+      setState(() => _attendanceMessage = 'Attendance error: $e');
+    });
   }
 
   void _resolveResult() {
@@ -265,6 +300,15 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
                 value: 'Offline Active',
                 valueKey: const Key('offline_mode_text'),
               ),
+              if (widget.attendanceCoordinator != null) ...[
+                const _Divider(),
+                _DetailRow(
+                  label: 'Attendance',
+                  value: _attendanceMessage ?? 'Marking…',
+                  valueKey: const Key('attendance_status_text'),
+                  valueColor: _securityGreen,
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 40),
