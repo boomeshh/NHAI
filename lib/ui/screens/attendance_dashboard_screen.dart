@@ -82,6 +82,7 @@ class _AttendanceDashboardScreenState extends State<AttendanceDashboardScreen> {
                     label: 'Total Employees', value: '${m.totalEmployees}'),
                 _MetricCard(label: 'Present Today', value: '${m.presentToday}'),
                 _MetricCard(label: 'Absent Today', value: '${m.absentToday}'),
+                _MetricCard(label: 'Late Today', value: '${m.lateToday}'),
                 _MetricCard(
                     label: 'Pending Sync', value: '${m.pendingSyncRecords}'),
                 _MetricCard(

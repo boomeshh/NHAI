@@ -20,6 +20,10 @@ abstract class AttendanceRepository {
   Future<List<AttendanceRecord>> getByDateRange(DateTime from, DateTime to);
   Future<List<AttendanceRecord>> getAll();
   Future<List<AttendanceRecord>> getBySyncStatus(SyncStatus status);
+
+  /// Removes the records with the given ids; returns the count removed.
+  /// Used by the sync/purge engine to retire synced, expired records.
+  Future<int> deleteByIds(Iterable<String> attendanceIds);
 }
 
 class InMemoryAttendanceRepository implements AttendanceRepository {
@@ -75,6 +79,15 @@ class InMemoryAttendanceRepository implements AttendanceRepository {
   @override
   Future<List<AttendanceRecord>> getBySyncStatus(SyncStatus status) async =>
       _store.values.where((r) => r.syncStatus == status).toList();
+
+  @override
+  Future<int> deleteByIds(Iterable<String> attendanceIds) async {
+    var removed = 0;
+    for (final id in attendanceIds) {
+      if (_store.remove(id) != null) removed++;
+    }
+    return removed;
+  }
 
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 }

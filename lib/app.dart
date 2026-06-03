@@ -10,9 +10,11 @@ import 'ui/screens/attendance_history_screen.dart';
 import 'ui/screens/authentication_screen.dart' as auth_screen;
 import 'ui/screens/enrollment_form_screen.dart';
 import 'ui/screens/face_capture_screen.dart' as face_capture;
+import 'ui/screens/face_detection_validation_screen.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/screens/local_logs_screen.dart';
 import 'ui/screens/multi_pose_enrollment_screen.dart';
+import 'ui/screens/recognition_validation_screen.dart';
 import 'ui/screens/splash_screen.dart';
 import 'ui/screens/verification_result_screen.dart';
 
@@ -84,6 +86,23 @@ class NhaiApp extends StatelessWidget {
               enrollmentModule: enrollmentModule,
               poseProvider: multiPoseProvider,
               faceDetector: faceDetector,
+            ),
+        // Face-detection hardening diagnostic: live quality / pose / blink.
+        '/face-detection-validation': (_) => FaceDetectionValidationScreen(
+              faceDetector: faceDetector,
+            ),
+        // TEMPORARY diagnostic: fresh enroll + 20 verifications + root-cause.
+        '/recognition-validation': (context) => RecognitionValidationScreen(
+              enrollmentModule: enrollmentModule,
+              authEngine: authEngine,
+              faceDetector: faceDetector,
+              verifyAttempts: 20,
+              formData: (ModalRoute.of(context)?.settings.arguments
+                      as EmployeeFormData?) ??
+                  const EmployeeFormData(
+                      employeeId: 'DEBUG',
+                      name: 'Debug Subject',
+                      department: 'Validation'),
             ),
         '/authenticate': (_) => auth_screen.AuthenticationScreen(
               authEngine: authEngine,

@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import '../camera_frame.dart';
 import '../recognition/embedding_math.dart';
+import '../recognition/enrollment_pose_audit.dart';
 import '../recognition/gallery_audit.dart';
+import '../recognition/gallery_consistency_report.dart';
 import '../recognition/reenrollment_migration.dart' show kRecognitionPipelineVersion;
 import '../../models/employee_record.dart';
 import '../../models/face_embedding.dart';
@@ -331,6 +333,7 @@ class EnrollmentModuleImpl implements EnrollmentModuleInterface {
 
     final now = DateTime.now().toUtc();
     final templates = <FaceTemplate>[];
+    final poseSamples = <PoseSample>[]; // forensic: measured angles per pose
     for (final pose in posedFrames.keys) {
       final frames = posedFrames[pose] ?? const [];
       if (frames.isEmpty) continue;
@@ -382,6 +385,17 @@ class EnrollmentModuleImpl implements EnrollmentModuleInterface {
           'embeddingMagnitude=${EmbeddingMath.magnitude(avg).toStringAsFixed(4)} '
           'faceBoxSize=$boxSize alignmentMode=$mode '
           'usable=${vectors.length}/${frames.length}');
+
+      // Forensic: collect the MEASURED angle means for the pose audit below.
+      double avgOf(List<double> xs) =>
+          xs.isEmpty ? 0.0 : xs.reduce((a, b) => a + b) / xs.length;
+      poseSamples.add(PoseSample(
+        assignedLabel: pose,
+        measuredYaw: avgOf(ys),
+        measuredPitch: avgOf(ps),
+        quality: vectors.length / frames.length,
+        magnitude: EmbeddingMath.magnitude(avg),
+      ));
     }
 
     if (templates.isEmpty) {
@@ -409,6 +423,25 @@ class EnrollmentModuleImpl implements EnrollmentModuleInterface {
     }
     if (GalleryAudit.anyBelow(pairs)) {
       debugPrint('[GalleryAudit] WARNING: a template diverges <0.50 (possible warp degradation)');
+    }
+
+    // Forensic: pose-label audit (measured angle vs assigned label, mirror /
+    // off-centre detection) and gallery-centrality consistency report.
+    final poseAudit = EnrollmentPoseAuditor.audit(poseSamples);
+    debugPrint(poseAudit.toLog());
+    if (poseAudit.anyFrontalOffCentre) {
+      debugPrint('[EnrollmentPoseAudit] WARNING: FRONTAL captured off-centre');
+    }
+    if (poseAudit.pitchAxisMirrored || poseAudit.yawAxisMirrored) {
+      debugPrint('[EnrollmentPoseAudit] WARNING: pose axis appears mirrored '
+          '(pitch=${poseAudit.pitchAxisMirrored} yaw=${poseAudit.yawAxisMirrored})');
+    }
+    final consistency = GalleryConsistencyAnalyzer.analyze(templates);
+    debugPrint(consistency.toLog());
+    if (consistency.frontalNotStrongest) {
+      debugPrint('[GalleryConsistency] WARNING: FRONTAL is not the strongest '
+          'template — strongest=${consistency.strongest?.pose.label}; a near-'
+          'frontal probe may match the medoid pose over FRONTAL');
     }
 
     final frontal = templates.firstWhere(

@@ -18,6 +18,10 @@ dependencies:
   uuid: ^4.3.3
   connectivity_plus: ^6.1.0
   google_mlkit_face_detection: ^0.13.2
+  # Persistent encrypted attendance storage (device-only). Tests use the
+  # in-memory SecureDatabase, so this native plugin is never loaded under
+  # `flutter test`.
+  sqflite_sqlcipher: ^3.1.0
 
 dev_dependencies:
   flutter_test:

@@ -55,4 +55,20 @@ class PendingSyncRecord {
         'lastAttemptAt': lastAttemptAt?.toIso8601String(),
         'lastError': lastError,
       };
+
+  factory PendingSyncRecord.fromJson(Map<String, dynamic> j) =>
+      PendingSyncRecord(
+        syncId: j['syncId'] as String,
+        entityType: j['entityType'] as String,
+        entityId: j['entityId'] as String,
+        payload: Map<String, dynamic>.from(j['payload'] as Map? ?? const {}),
+        status: enumByName(
+            SyncStatus.values, j['status'] as String?, SyncStatus.pending),
+        attempts: (j['attempts'] as num?)?.toInt() ?? 0,
+        createdAt: DateTime.parse(j['createdAt'] as String),
+        lastAttemptAt: j['lastAttemptAt'] == null
+            ? null
+            : DateTime.parse(j['lastAttemptAt'] as String),
+        lastError: j['lastError'] as String?,
+      );
 }

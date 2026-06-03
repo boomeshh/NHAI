@@ -7,6 +7,7 @@ import 'package:flutter/services.dart' show DeviceOrientation;
 import '../../core/camera_frame.dart';
 import '../../core/enrollment_module/enrollment_module_interface.dart';
 import '../../core/face_detection/face_detector_interface.dart';
+import '../../core/face_detection/face_quality.dart';
 import '../../core/face_preprocessor.dart';
 import '../../core/recognition/multi_pose_enrollment_controller.dart';
 import '../../models/face_pose.dart';
@@ -79,6 +80,12 @@ class _MultiPoseEnrollmentScreenState extends State<MultiPoseEnrollmentScreen> {
 
   late final MultiPoseEnrollmentController _controller =
       MultiPoseEnrollmentController(framesPerPose: widget.framesPerPose);
+
+  // Detection-quality pre-filter for enrollment frames (additive; keeps poor
+  // lighting / blur / off-centre frames out of the template gallery). The
+  // enrollment preset widens the pose gate for deliberate left/right/up/down.
+  static const FaceQualityAnalyzer _qualityAnalyzer =
+      FaceQualityAnalyzer(t: QualityThresholds.enrollment);
 
   EmployeeFormData? _formData;
   _Phase _phase = _Phase.capturing;
@@ -217,6 +224,31 @@ class _MultiPoseEnrollmentScreenState extends State<MultiPoseEnrollmentScreen> {
           f.noseBasePosition != null &&
           f.mouthLeftPosition != null &&
           f.mouthRightPosition != null;
+      // Detection-quality pre-filter (enrollment preset: pose gate widened so
+      // deliberate turns are allowed; lighting/sharpness/size/centering/eyes
+      // still enforced so blurry or poorly-lit frames never enter the gallery).
+      // ML Kit box coords are in rotation-applied space; swap frame dims for
+      // 90°/270° so centring/size are normalized in the same space.
+      final bool swap = frame.rotationDegrees % 180 == 90;
+      final quality = _qualityAnalyzer.analyze(QualityInput(
+        faceDetected: true,
+        brightness: FaceQualityAnalyzer.brightnessFromLuma(frame.bytes),
+        sharpness: FaceQualityAnalyzer.laplacianVariance(
+            frame.bytes, frame.width, frame.height),
+        boxWidth: f.box.width,
+        boxHeight: f.box.height,
+        boxLeft: f.box.left,
+        boxTop: f.box.top,
+        frameWidth: swap ? frame.height : frame.width,
+        frameHeight: swap ? frame.width : frame.height,
+        yaw: f.headEulerAngleY ?? 0,
+        pitch: f.headEulerAngleX ?? 0,
+        roll: f.headEulerAngleZ ?? 0,
+        leftEyeOpen: f.leftEyeOpenProbability ?? 1.0,
+        rightEyeOpen: f.rightEyeOpenProbability ?? 1.0,
+        hasLeftEye: f.hasLeftEye,
+        hasRightEye: f.hasRightEye,
+      ));
       final enriched = frame.copyWith(
         faceCount: 1,
         faceBox: FaceBoxData(
@@ -234,7 +266,7 @@ class _MultiPoseEnrollmentScreenState extends State<MultiPoseEnrollmentScreen> {
         frame: enriched,
         yaw: f.headEulerAngleY ?? 0.0,
         pitch: f.headEulerAngleX ?? 0.0,
-        valid: eyesOpen && landmarks,
+        valid: eyesOpen && landmarks && quality.accepted,
       ));
     } catch (e) {
       debugPrint('[MultiPoseEnroll] $e');

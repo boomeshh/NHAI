@@ -44,6 +44,32 @@ class HomeScreen extends StatelessWidget {
         centerTitle: true,
         // "View Logs" action in the app bar (Requirement 2.4)
         actions: [
+          // Face-detection hardening diagnostic.
+          Tooltip(
+            message: 'Detection Validation',
+            child: IconButton(
+              key: const Key('detection_validation_button'),
+              icon: const Icon(Icons.face_retouching_natural, color: _white),
+              iconSize: 26,
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              onPressed: () => Navigator.of(context)
+                  .pushNamed('/face-detection-validation'),
+              tooltip: 'Detection Validation',
+            ),
+          ),
+          // TEMPORARY: recognition root-cause validation diagnostic.
+          Tooltip(
+            message: 'Recognition Validation',
+            child: IconButton(
+              key: const Key('recognition_validation_button'),
+              icon: const Icon(Icons.science_outlined, color: _white),
+              iconSize: 26,
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              onPressed: () =>
+                  Navigator.of(context).pushNamed('/recognition-validation'),
+              tooltip: 'Recognition Validation',
+            ),
+          ),
           Tooltip(
             message: 'View Logs',
             child: IconButton(

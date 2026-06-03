@@ -14,6 +14,7 @@
         "google_mlkit_face_detection",
         "hive",
         "hive_flutter",
+        "sqflite_sqlcipher",
         "tflite_flutter",
         "uuid"
       ],
@@ -99,6 +100,16 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "sqflite_sqlcipher",
+      "version": "3.4.0",
+      "dependencies": [
+        "flutter",
+        "path",
+        "sqflite_common",
+        "synchronized"
       ]
     },
     {
@@ -551,6 +562,20 @@
         "clock",
         "collection"
       ]
+    },
+    {
+      "name": "sqflite_common",
+      "version": "2.5.9",
+      "dependencies": [
+        "meta",
+        "path",
+        "synchronized"
+      ]
+    },
+    {
+      "name": "synchronized",
+      "version": "3.4.1",
+      "dependencies": []
     },
     {
       "name": "google_mlkit_commons",

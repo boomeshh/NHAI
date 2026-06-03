@@ -2,6 +2,8 @@
 // verification attempts and attributes a low success rate to the single most
 // likely subsystem. Uses only existing read-only APIs — it does NOT modify the
 // matcher, threshold, gallery, alignment, or any other subsystem.
+import 'dart:math' as math;
+
 import '../../models/face_pose.dart';
 
 enum Subsystem { none, model, alignment, enrollmentGallery, preprocessing }
@@ -19,6 +21,7 @@ class ValidationReport {
   final double avgSimilarity;
   final double minSimilarity;
   final double maxSimilarity;
+  final double stdDevSimilarity;
   final double successRate;
   final double threshold;
 
@@ -30,6 +33,7 @@ class ValidationReport {
     required this.avgSimilarity,
     required this.minSimilarity,
     required this.maxSimilarity,
+    required this.stdDevSimilarity,
     required this.successRate,
     required this.threshold,
     required this.galleryPairs,
@@ -93,6 +97,7 @@ class ValidationReport {
     b.writeln('averageSimilarity,${avgSimilarity.toStringAsFixed(4)}');
     b.writeln('minSimilarity,${minSimilarity.toStringAsFixed(4)}');
     b.writeln('maxSimilarity,${maxSimilarity.toStringAsFixed(4)}');
+    b.writeln('stdDevSimilarity,${stdDevSimilarity.toStringAsFixed(4)}');
     b.writeln('successRate,${(successRate * 100).toStringAsFixed(0)}%');
     b.writeln('threshold,$threshold');
     galleryPairs.forEach((k, v) =>
@@ -126,11 +131,20 @@ class RecognitionValidator {
       if (p) pass++;
     }
     final n = raw.isEmpty ? 1 : raw.length;
+    final avg = sum / n;
+    // Population standard deviation of the per-attempt similarities.
+    var sumSqDiff = 0.0;
+    for (final a in attempts) {
+      final d = a.similarity - avg;
+      sumSqDiff += d * d;
+    }
+    final std = raw.isEmpty ? 0.0 : math.sqrt(sumSqDiff / raw.length);
     return ValidationReport(
       attempts: attempts,
-      avgSimilarity: sum / n,
+      avgSimilarity: avg,
       minSimilarity: raw.isEmpty ? 0.0 : mn,
       maxSimilarity: raw.isEmpty ? 0.0 : mx,
+      stdDevSimilarity: std,
       successRate: raw.isEmpty ? 0.0 : pass / raw.length,
       threshold: threshold,
       galleryPairs: galleryPairs,

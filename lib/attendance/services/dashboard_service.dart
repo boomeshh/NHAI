@@ -9,6 +9,7 @@ class DashboardMetrics {
   final int totalEmployees;
   final int presentToday;
   final int absentToday;
+  final int lateToday;
   final int checkInCount;
   final int checkOutCount;
   final int pendingSyncRecords;
@@ -22,6 +23,7 @@ class DashboardMetrics {
     required this.totalEmployees,
     required this.presentToday,
     required this.absentToday,
+    required this.lateToday,
     required this.checkInCount,
     required this.checkOutCount,
     required this.pendingSyncRecords,
@@ -34,6 +36,7 @@ class DashboardMetrics {
         'totalEmployees': totalEmployees,
         'presentToday': presentToday,
         'absentToday': absentToday,
+        'lateToday': lateToday,
         'checkInCount': checkInCount,
         'checkOutCount': checkOutCount,
         'pendingSyncRecords': pendingSyncRecords,
@@ -67,6 +70,7 @@ class DashboardService {
     final todays = await attendance.getByDate(today);
 
     final presentIds = todays.map((r) => r.employeeId).toSet();
+    final lateToday = todays.where((r) => r.isLate).length;
     final checkInCount = todays.length;
     final checkOutCount = todays.where((r) => r.checkOutTime != null).length;
     final pending = (await syncQueue.pending()).length;
@@ -97,6 +101,7 @@ class DashboardService {
       presentToday: presentIds.length,
       absentToday:
           activeEmployees.where((e) => !presentIds.contains(e.employeeId)).length,
+      lateToday: lateToday,
       checkInCount: checkInCount,
       checkOutCount: checkOutCount,
       pendingSyncRecords: pending,

@@ -18,12 +18,14 @@ void main() {
     expect(r.maxSimilarity, 0.90);
     expect(r.minSimilarity, 0.65);
     expect(r.avgSimilarity, closeTo(0.726, 1e-3));
+    expect(r.stdDevSimilarity, greaterThan(0)); // dispersed attempts
   });
 
-  test('avg ≥ 0.80 → culprit none (healthy)', () {
+  test('avg ≥ 0.80 → culprit none (healthy); identical attempts → std 0', () {
     final r = v.analyze(_runs(List.filled(10, 0.91), FacePose.frontal));
     expect(r.culprit, Subsystem.none);
     expect(r.successRate, 1.0);
+    expect(r.stdDevSimilarity, closeTo(0, 1e-9));
   });
 
   test('low avg + frontal best pose + healthy gallery → MODEL', () {

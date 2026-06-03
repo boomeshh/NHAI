@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../camera_frame.dart';
+import 'detection_forensics.dart';
 import 'face_detector_interface.dart';
+import 'landmark_audit.dart';
 
 /// Maps a rotation in degrees (0/90/180/270) to ML Kit's [InputImageRotation].
 /// Pure function (no native init) so it is unit-testable.
@@ -75,20 +77,54 @@ class MlKitFaceDetector implements FaceDetectorInterface {
       return const [];
     }
 
-    debugPrint('[MlKitFaceDetector] faces detected count=${faces.length}');
+    // ── Phase 1 — detection forensics (structured, greppable) ─────────────────
+    const auditor = LandmarkAuditor();
     for (var i = 0; i < faces.length; i++) {
       final f = faces[i];
       final r = f.boundingBox;
-      debugPrint(
-        '[MlKitFaceDetector]   face[$i] '
-        'box=${r.width.round()}x${r.height.round()}@(${r.left.round()},${r.top.round()}) '
-        'headY=${f.headEulerAngleY?.toStringAsFixed(1)} '
-        'headZ=${f.headEulerAngleZ?.toStringAsFixed(1)} '
-        'leftEyeOpen=${f.leftEyeOpenProbability?.toStringAsFixed(2)} '
-        'rightEyeOpen=${f.rightEyeOpenProbability?.toStringAsFixed(2)} '
-        'smiling=${f.smilingProbability?.toStringAsFixed(2)} '
-        'trackId=${f.trackingId}',
+      List<double>? lm(FaceLandmarkType t) => _landmarkXy(f, t);
+      final audit = auditor.audit(
+        hasLeftEye: f.landmarks[FaceLandmarkType.leftEye] != null,
+        hasRightEye: f.landmarks[FaceLandmarkType.rightEye] != null,
+        hasNose: f.landmarks[FaceLandmarkType.noseBase] != null,
+        hasMouthLeft: f.landmarks[FaceLandmarkType.leftMouth] != null,
+        hasMouthRight: f.landmarks[FaceLandmarkType.rightMouth] != null,
       );
+      DetectionForensics.logFrame(
+        faces: faces.length,
+        boxLeft: r.left.round(),
+        boxTop: r.top.round(),
+        boxWidth: r.width.round(),
+        boxHeight: r.height.round(),
+        rotation: frame.rotationDegrees,
+        frameWidth: frame.width,
+        frameHeight: frame.height,
+        leftEye: lm(FaceLandmarkType.leftEye),
+        rightEye: lm(FaceLandmarkType.rightEye),
+        nose: lm(FaceLandmarkType.noseBase),
+        mouthLeft: lm(FaceLandmarkType.leftMouth),
+        mouthRight: lm(FaceLandmarkType.rightMouth),
+        yaw: f.headEulerAngleY,
+        pitch: f.headEulerAngleX,
+        roll: f.headEulerAngleZ,
+        leftEyeOpen: f.leftEyeOpenProbability,
+        rightEyeOpen: f.rightEyeOpenProbability,
+        audit: audit,
+      );
+    }
+    if (faces.isEmpty) {
+      debugPrint(DetectionForensics.detection(
+        faces: 0,
+        boxLeft: 0,
+        boxTop: 0,
+        boxWidth: 0,
+        boxHeight: 0,
+        rotation: frame.rotationDegrees,
+        frameWidth: frame.width,
+        frameHeight: frame.height,
+      ));
+      debugPrint(
+          DetectionForensics.decision(accepted: false, reason: 'noFace'));
     }
 
     return faces.map((f) {

@@ -7,6 +7,8 @@ import 'package:flutter/services.dart' show DeviceOrientation;
 import '../../core/auth_engine/auth_engine_interface.dart';
 import '../../core/camera_frame.dart';
 import '../../core/face_detection/face_detector_interface.dart';
+import '../../core/face_detection/face_quality.dart';
+import '../../core/face_detection/face_stability_tracker.dart';
 import '../../core/face_preprocessor.dart';
 import '../../core/recognition/stable_embedding_collector.dart';
 import '../../core/validation/biometric_validation.dart';
@@ -105,6 +107,15 @@ class _AuthenticationScreenState extends State<AuthenticationScreen> {
   // ── Biometric validation gate (Phases 2–6) ───────────────────────────────
   final BiometricGate _gate = BiometricGate(requireBlink: true);
   String _statusMessage = kMsgNoFace;
+
+  // ── Detection-quality + geometric-stability pre-filter ────────────────────
+  // Additive hardening: a frame is only collected for recognition when it is
+  // high-quality (lighting / sharpness / size / centering / eyes) AND
+  // geometrically stable frame-to-frame, on top of the existing blink gate.
+  // This does NOT alter the threshold, matcher, engine, or liveness logic.
+  static const FaceQualityAnalyzer _qualityAnalyzer = FaceQualityAnalyzer();
+  final FaceStabilityTracker _stabilityTracker =
+      FaceStabilityTracker(requiredConsecutive: 3);
 
   /// Collects ≥5 valid frames AFTER blink success; their embeddings are
   /// averaged before recognition (Phase 7). Armed only once the gate passes.
@@ -214,6 +225,7 @@ class _AuthenticationScreenState extends State<AuthenticationScreen> {
       // Multi-face guard (Phase 11 / fail-closed).
       if (faces.length > 1) {
         _gate.reset();
+        _stabilityTracker.reset();
         setState(() {
           _statusMessage = 'Ensure only one person is in frame';
           _alignmentState = FaceAlignmentState.idle;
@@ -233,11 +245,71 @@ class _AuthenticationScreenState extends State<AuthenticationScreen> {
       final gateResult = _gate.process(observation);
       _logValidation(observation, gateResult);
 
+      // Detection-quality + stability pre-filter (additive). Only meaningful
+      // when a face is present; never blocks the blink challenge because the
+      // quality gate has no eye-open hard-gate (closed-eye frames still pass).
+      FaceQualityScore? quality;
+      bool stableNow = false;
+      if (faces.isNotEmpty) {
+        final f = faces.first;
+        final double brightness =
+            FaceQualityAnalyzer.brightnessFromLuma(enriched.bytes);
+        // ML Kit returns the bounding box in the ROTATION-APPLIED (upright)
+        // coordinate space. For 90°/270° the upright frame's width/height are
+        // swapped relative to the raw sensor frame, so centring/size must be
+        // normalized against the swapped dimensions or a centred face is wrongly
+        // rejected as faceOffCenter (which silently blocked capture).
+        final bool swap = enriched.rotationDegrees % 180 == 90;
+        final int qFrameW = swap ? enriched.height : enriched.width;
+        final int qFrameH = swap ? enriched.width : enriched.height;
+        quality = _qualityAnalyzer.analyze(QualityInput(
+          faceDetected: true,
+          brightness: brightness,
+          sharpness: enriched.sharpnessScore,
+          boxWidth: f.box.width,
+          boxHeight: f.box.height,
+          boxLeft: f.box.left,
+          boxTop: f.box.top,
+          frameWidth: qFrameW,
+          frameHeight: qFrameH,
+          yaw: f.headEulerAngleY ?? 0,
+          pitch: f.headEulerAngleX ?? 0,
+          roll: f.headEulerAngleZ ?? 0,
+          leftEyeOpen: f.leftEyeOpenProbability ?? 1.0,
+          rightEyeOpen: f.rightEyeOpenProbability ?? 1.0,
+          hasLeftEye: f.hasLeftEye,
+          hasRightEye: f.hasRightEye,
+        ));
+        stableNow = _stabilityTracker
+            .record(StabilitySample.fromBox(
+              left: f.box.left,
+              top: f.box.top,
+              width: f.box.width,
+              height: f.box.height,
+              yaw: f.headEulerAngleY ?? 0,
+              pitch: f.headEulerAngleX ?? 0,
+              roll: f.headEulerAngleZ ?? 0,
+            ))
+            .stable;
+        // TEMP forensics: prove each handoff between detection and recognition.
+        debugPrint('[PIPELINE] Detection Passed faces=1 '
+            'quality=${quality.accepted} reason=${quality.rejection.name} '
+            'coverage=${quality.faceCoverage.toStringAsFixed(3)} '
+            'centerOffset=${quality.centerOffset.toStringAsFixed(3)}');
+        if (stableNow) debugPrint('[PIPELINE] Stability Passed');
+      } else {
+        _stabilityTracker.reset();
+      }
+
       setState(() {
-        _statusMessage = gateResult.message;
-        _alignmentState = gateResult.validation.valid
-            ? FaceAlignmentState.detected
-            : FaceAlignmentState.idle;
+        // Prefer the specific quality reason (e.g. "Move closer") when a face is
+        // present but low-quality; otherwise show the gate's message.
+        _statusMessage =
+            (quality != null && !quality.accepted) ? quality.reasonMessage : gateResult.message;
+        _alignmentState =
+            gateResult.validation.valid && (quality?.accepted ?? false)
+                ? FaceAlignmentState.detected
+                : FaceAlignmentState.idle;
       });
 
       // Recognition only begins AFTER the blink gate passes. The blink itself
@@ -245,10 +317,15 @@ class _AuthenticationScreenState extends State<AuthenticationScreen> {
       // the gate — we arm the collector once the gate passes and then gather a
       // minimum of [target] valid frames whose embeddings are averaged.
       if (!gateResult.passed) return;
+      debugPrint('[PIPELINE] Blink Passed');
 
       if (!_collector.isArmed) _collector.arm();
 
-      if (gateResult.validation.valid && faces.isNotEmpty) {
+      // Only collect frames that are valid (gate), high-quality, AND stable.
+      if (gateResult.validation.valid &&
+          faces.isNotEmpty &&
+          (quality?.accepted ?? false) &&
+          stableNow) {
         final f = faces.first;
         final frame = enriched.copyWith(
           faceCount: 1,
@@ -273,6 +350,8 @@ class _AuthenticationScreenState extends State<AuthenticationScreen> {
 
       if (_collector.isComplete) {
         debugPrint('[Recognition] Average complete');
+        debugPrint(
+            '[PIPELINE] Capture Triggered frames=${_collector.count}');
         _proceedToAuthentication(_collector.items.toList());
       }
     } catch (e, st) {
@@ -490,8 +569,14 @@ class _AuthenticationScreenState extends State<AuthenticationScreen> {
 
     try {
       // Averages embeddings across the stable frames (single frame for the
-      // legacy/test path).
+      // legacy/test path). The engine emits [Embedding] and [MatcherAudit] /
+      // [Decision] between these two markers.
+      debugPrint('[PIPELINE] Recognition Started frames=${frames.length}');
       final result = await widget.authEngine.authenticateAveraged(frames);
+      debugPrint('[PIPELINE] Authentication Result '
+          'classification=${result.classification.name} '
+          'trust=${result.trustScore.toStringAsFixed(3)} '
+          'matched=${result.matchedEmployeeId ?? "none"}');
 
       if (!mounted) return;
 
@@ -519,6 +604,7 @@ class _AuthenticationScreenState extends State<AuthenticationScreen> {
 
     _gate.reset();
     _collector.reset();
+    _stabilityTracker.reset();
     setState(() {
       _phase = _ScreenPhase.scanning;
       _alignmentState = FaceAlignmentState.idle;
