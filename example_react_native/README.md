@@ -65,7 +65,7 @@ React Native (App.tsx)
 | `getAttendanceSummary(input?)` | no | `{ metrics, report }` |
 | `syncRecords(input?)` | no | `{ sync, purge? }` |
 
-Full contracts: [../docs/sdk/API_CONTRACTS.md](../docs/sdk/API_CONTRACTS.md).
+Full contracts: [../docs/architecture/API_CONTRACTS.md](../docs/architecture/API_CONTRACTS.md).
 
 ## What never crosses the boundary
 
